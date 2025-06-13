@@ -13,7 +13,6 @@
 # limitations under the License.
 
 
-# /home/jbrub/.local/share/mise/installs/python/3.12.10/bin/python -m pytest /home/jbrub/workplace/mcp/src/kinesis-mcp-server/tests/test_server.py -v
 """Tests for the kinesis MCP Server."""
 
 import boto3
