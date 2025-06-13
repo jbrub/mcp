@@ -194,7 +194,7 @@ def list_streams(
 
 @mcp.tool('describe_stream_summary')
 @handle_exceptions
-def describe_stream_summary(stream_name: str, stream_arn: str) -> Dict[str, Any]:
+def describe_stream_summary(stream_name: str = None, stream_arn: str = None) -> Dict[str, Any]:
     """Describes the stream summary.
 
     Args:
@@ -207,6 +207,8 @@ def describe_stream_summary(stream_name: str, stream_arn: str) -> Dict[str, Any]
     # Required Paramaters
     params: DescribeStreamSummaryInput = {}
 
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
     # Optional Parameters
     if stream_name is not None:
         params['StreamName'] = stream_name

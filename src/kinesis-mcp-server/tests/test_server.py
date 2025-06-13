@@ -280,10 +280,11 @@ def test_describe_stream_summary_with_stream(mock_kinesis_client):
         result = describe_stream_summary(stream_name='test-stream')
 
         # Verify the result contains the stream details
-        assert 'StreamName' in result
-        assert result['StreamName'] == 'test-stream'
-        assert 'ShardCount' in result
-        assert result['ShardCount'] == 1
+        assert 'StreamDescriptionSummary' in result
+        assert 'StreamName' in result['StreamDescriptionSummary']
+        assert result['StreamDescriptionSummary']['StreamName'] == 'test-stream'
+        assert 'OpenShardCount' in result['StreamDescriptionSummary']
+        assert result['StreamDescriptionSummary']['OpenShardCount'] == 1
 
 
 """put_records Tests"""
