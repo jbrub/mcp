@@ -339,6 +339,20 @@ A server for interacting with Amazon Neptune graph database.
 
 [Learn more about the Amazon Neptune MCP Server](servers/amazon-neptune-mcp-server.md)
 
+### Amazon Kinesis MCP Server
+
+An AWS Labs Model Context Protocol (MCP) server for Amazon Kinesis that enables AI assistants to interact with Kinesis data streams.
+
+**Features:**
+
+- Create and manage Kinesis data streams
+- List available streams and retrieve stream details
+- Put records into Kinesis streams for real-time data processing
+- Retrieve records from Kinesis shards
+- Describe stream summaries for monitoring and management
+
+    [Learn more about the kinesis MCP Server](servers/kinesis-mcp-server.md)
+
 ## Installation and Setup
 
 Please refer to the README files in each server's directory for specific installation instructions.
