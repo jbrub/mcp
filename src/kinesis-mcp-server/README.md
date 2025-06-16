@@ -103,3 +103,26 @@ Add the MCP to your favorite agentic tools. e.g. for Amazon Q Developer CLI MCP,
   }
 }
 ```
+
+or after a successful `docker build -t awslabs/dynamodb-mcp-server .`:
+
+```
+{
+    "mcpServers": {
+      "awslabs.kinesis-mcp-server": {
+        "command": "docker",
+        "args": [
+          "run",
+          "--rm",
+          "--interactive",
+          "--env",
+          "FASTMCP_LOG_LEVEL=ERROR",
+          "awslabs/kinesis-mcp-server:latest"
+        ],
+        "env": {},
+        "disabled": false,
+        "autoApprove": []
+      }
+    }
+  }
+```
