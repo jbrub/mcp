@@ -15,6 +15,7 @@
 """awslabs kinesis MCP Server implementation."""
 
 import boto3
+import os
 from awslabs.kinesis_mcp_server.common import (
     CreateStreamInput,
     DescribeStreamSummaryInput,
@@ -23,17 +24,30 @@ from awslabs.kinesis_mcp_server.common import (
     PutRecordsInput,
     handle_exceptions,
 )
-from loguru import logger
+from awslabs.kinesis_mcp_server.consts import (
+    DEFAULT_REGION,
+    DEFAULT_SHARD_COUNT,
+    DEFAULT_STREAM_LIMIT,
+    STREAM_MODE_PROVISIONED,
+    STREAM_STATUS_CREATING,
+)
+from botocore.config import Config
 from mcp.server.fastmcp import FastMCP
 from typing import Any, Dict, List
 
 
 mcp = FastMCP(
     'awslabs.kinesis-mcp-server',
-    instructions='Instructions for using this kinesis MCP server. This can be used by clients to improve the LLM'
-    's understanding of available tools, resources, etc. It can be thought of like a '
-    'hint'
-    ' to the model. For example, this information MAY be added to the system prompt. Important to be clear, direct, and detailed.',
+    instructions="""
+    This Kinesis MCP server provides tools to interact with Amazon Kinesis Data Streams.
+
+    When using these tools, please specify all relevant parameters explicitly, even when using default values.
+    For example, when creating a stream, include the region_name parameter even if using the default region.
+
+    The default region being used is 'us-west-1'. A region must be explicitly stated to use any other region.
+
+    This helps ensure clarity and prevents region-related issues when working with AWS resources.
+    """,
     dependencies=[
         'pydantic',
         'loguru',
@@ -41,13 +55,31 @@ mcp = FastMCP(
     version='alpha',
 )
 
-kinesis = boto3.client('kinesis')
+
+def get_kinesis_client(region_name: str = DEFAULT_REGION):
+    """Create a boto3 Kinesis client using credentials from environment variables. Falls back to 'us-west-2' if no region is specified or found in environment."""
+    # Use provided region, or get from env, or fall back to us-west-2
+    region = region_name or os.getenv('AWS_REGION') or 'us-west-2'
+
+    # Configure custom user agent to identify requests from LLM/MCP
+    config = Config(user_agent_extra='MCP/KinesisServer')
+
+    # Create a new session to force credentials to reload
+    # so that if user changes credential, it will be reflected immediately in the next call
+    session = boto3.Session()
+
+    # boto3 will automatically load credentials from environment variables:
+    # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
+    return session.client('kinesis', region_name=region, config=config)
 
 
 @mcp.tool('put_records')
 @handle_exceptions
 def put_records(
-    stream_name: str, records: List[Dict[str, Any]], stream_arn: str = None
+    stream_name: str,
+    records: List[Dict[str, Any]],
+    stream_arn: str = None,
+    region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
     """Writes multiple data records to a Kinesis data stream in a single call.
 
@@ -55,6 +87,7 @@ def put_records(
         stream_name: The name of the stream to write to
         records: List of records to write to the stream
         stream_arn: ARN of the stream to write to
+        region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
         Dictionary containing the sequence number and shard ID of the records
@@ -70,6 +103,7 @@ def put_records(
         params['StreamARN'] = stream_arn
 
     # Call Kinesis API to put records
+    kinesis = get_kinesis_client(region_name)
     response = kinesis.put_records(**params)
 
     # Return Sequence Number and Shard ID
@@ -78,13 +112,19 @@ def put_records(
 
 @mcp.tool('get_records')
 @handle_exceptions
-def get_records(shard_iterator: str, limit: int = None, stream_arn: str = None) -> Dict[str, Any]:
+def get_records(
+    shard_iterator: str,
+    limit: int = None,
+    stream_arn: str = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
     """Retrieves records from a Kinesis shard.
 
     Args:
         shard_iterator: The shard iterator to use for retrieving records
         limit: Maximum number of records to retrieve (default: None)
         stream_arn: ARN of the stream to retrieve records from
+        region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
         Dictionary containing the retrieved records
@@ -100,6 +140,7 @@ def get_records(shard_iterator: str, limit: int = None, stream_arn: str = None) 
         params['StreamARN'] = stream_arn
 
     # Call Kinesis API to get records
+    kinesis = get_kinesis_client(region_name)
     response = kinesis.get_records(**params)
 
     # Return Records
@@ -110,13 +151,14 @@ def get_records(shard_iterator: str, limit: int = None, stream_arn: str = None) 
 @handle_exceptions
 def create_stream(
     stream_name: str,
-    shard_count: int = 1,
+    shard_count: int = DEFAULT_SHARD_COUNT,
     stream_mode_details: Dict[str, str] = None,
     tags: Dict[str, str] = None,
+    region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
-    # TODO: There is a limit of 500 shards per region
+    # TODO: There is a limit of MAX_SHARDS_PER_REGION shards per region
     # TODO: Check for formatting of name possibly? Cannot have certain characters
-    # TODO: Limit of 50 Tags - Test 200
+    # TODO: Limit of MAX_TAGS Tags - Test 200
     """Creates a new Kinesis data stream with the specified name and shard count.
 
     Args:
@@ -124,6 +166,7 @@ def create_stream(
         shard_count: Number of shards to create (default: 1)
         stream_mode_details: Details about the stream mode (default: {"StreamMode": "PROVISIONED"})
         tags: Tags to associate with the stream
+        region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
         Dictionary containing the stream name and creation status
@@ -133,18 +176,19 @@ def create_stream(
 
     # Optional Paramaters
     if stream_mode_details is None:
-        stream_mode_details = {'StreamMode': 'PROVISIONED'}
+        stream_mode_details = {'StreamMode': STREAM_MODE_PROVISIONED}
 
     params['StreamModeDetails'] = stream_mode_details
 
     # Add ShardCount only for PROVISIONED mode
-    if stream_mode_details.get('StreamMode') == 'PROVISIONED':
+    if stream_mode_details.get('StreamMode') == STREAM_MODE_PROVISIONED:
         params['ShardCount'] = shard_count
 
     if tags is not None:
         params['Tags'] = tags
 
     # Call Kinesis API to create the stream
+    kinesis = get_kinesis_client(region_name)
     kinesis.create_stream(**params)
 
     # Return Status Details of the Stream Creation
@@ -153,14 +197,18 @@ def create_stream(
         'ShardCount': shard_count,
         'StreamModeDetails': stream_mode_details,
         'Tags': tags,
-        'Status': 'CREATING',
+        'Status': STREAM_STATUS_CREATING,
+        'Region': region_name,
     }
 
 
 @mcp.tool('list_streams')
 @handle_exceptions
 def list_streams(
-    limit: int = 100, exclusive_start_stream_name: str = None, next_token: str = None
+    limit: int = DEFAULT_STREAM_LIMIT,
+    exclusive_start_stream_name: str = None,
+    next_token: str = None,
+    region_name: str = DEFAULT_REGION,
 ) -> List[Dict[str, Any]]:
     """Lists the Kinesis data streams.
 
@@ -168,6 +216,7 @@ def list_streams(
         limit: Maximum number of streams to list (default: 100)
         exclusive_start_stream_name: Name of the stream to start listing from (default: None)
         next_token: Token for pagination (default: None)
+        region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
         List of dictionaries containing stream details
@@ -186,6 +235,7 @@ def list_streams(
         params['NextToken'] = next_token
 
     # Call Kinesis API to list the streams
+    kinesis = get_kinesis_client(region_name)
     response = kinesis.list_streams(**params)
 
     # Return List of Stream Details
@@ -194,12 +244,17 @@ def list_streams(
 
 @mcp.tool('describe_stream_summary')
 @handle_exceptions
-def describe_stream_summary(stream_name: str = None, stream_arn: str = None) -> Dict[str, Any]:
+def describe_stream_summary(
+    stream_name: str = None,
+    stream_arn: str = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
     """Describes the stream summary.
 
     Args:
         stream_name: Name of the stream to describe
         stream_arn: ARN of the stream to describe
+        region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
         Dictionary containing stream summary details
@@ -217,6 +272,7 @@ def describe_stream_summary(stream_name: str = None, stream_arn: str = None) -> 
         params['StreamARN'] = stream_arn
 
     # Call Kinesis API to describe the stream summary
+    kinesis = get_kinesis_client(region_name)
     response = kinesis.describe_stream_summary(**params)
 
     # Return Stream Summary Details
@@ -225,14 +281,6 @@ def describe_stream_summary(stream_name: str = None, stream_arn: str = None) -> 
 
 def main():
     """Run the MCP server with CLI argument support."""
-    logger.trace('A trace message.')
-    logger.debug('A debug message.')
-    logger.info('An info message.')
-    logger.success('A success message.')
-    logger.warning('A warning message.')
-    logger.error('An error message.')
-    logger.critical('A critical message.')
-
     mcp.run()
 
 
