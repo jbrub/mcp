@@ -1,3 +1,4 @@
+import os
 from functools import wraps
 from typing import Any, Callable, Dict, List
 from typing_extensions import TypedDict
@@ -7,6 +8,7 @@ def handle_exceptions(func: Callable) -> Callable:
     """Decorator to handle exceptions in Kinesis operations.
 
     Wraps the function in a try-catch block and returns any exceptions in a standardized error format.
+    When TESTING environment variable is set, exceptions are re-raised for better testability.
 
     Args:
         func: The function to wrap
@@ -21,6 +23,9 @@ def handle_exceptions(func: Callable) -> Callable:
             return func(*args, **kwargs)
         except Exception as e:
             print(f'An error occurred: {e}')
+            # Re-raise the exception during testing
+            if os.environ.get('TESTING') == 'true':
+                raise
             return None
 
     return wrapper
