@@ -9,9 +9,8 @@ The official MCP Server for interacting with AWS Kinesis
 Writes multiple data records to a Kinesis data stream in a single call.
 
 **Parameters:**
-- `stream_name`: The name of the stream to write to
+- `stream_name` or `stream_arn` (required): Name or ARN of the stream to describe
 - `records`: List of records to write to the stream
-- `stream_arn` (optional): ARN of the stream to write to
 
 **Returns:**
 Dictionary containing the sequence number and shard ID of the records
