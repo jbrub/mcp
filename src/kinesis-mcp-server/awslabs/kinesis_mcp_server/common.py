@@ -41,7 +41,7 @@ class PutRecordsInput(TypedDict, total=False):
     """
 
     Records: List[Dict[str, Any]]  # Required
-    StreamName: str  # Optional
+    StreamName: str  # Optional - Either StreamName or StreamARN required
     StreamARN: str  # Optional
 
 
@@ -71,7 +71,7 @@ class CreateStreamInput(TypedDict, total=False):
 
     StreamName: str  # Required
     ShardCount: int  # Optional - Default 1
-    StreamModeDetails: Dict[str, str]  # Optional
+    StreamModeDetails: Dict[str, str]  # Optional - Default ON_DEMAND
     Tags: Dict[str, str]  # Optional
 
 
@@ -97,5 +97,5 @@ class DescribeStreamSummaryInput(TypedDict, total=False):
         StreamARN: ARN of the stream to describe
     """
 
-    StreamName: str  # Optional
+    StreamName: str  # Optional - Either StreamName or StreamARN required
     StreamARN: str  # Optional

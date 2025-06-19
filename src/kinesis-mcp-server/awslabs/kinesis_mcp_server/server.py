@@ -68,7 +68,7 @@ mcp = FastMCP(
     When using these tools, please specify all relevant parameters explicitly, even when using default values.
     For example, when creating a stream, include the region_name parameter even if using the default region.
 
-    The default region being used is 'us-west-1'. A region must be explicitly stated to use any other region.
+    The default region being used is 'us-west-2'. A region must be explicitly stated to use any other region.
 
     This helps ensure clarity and prevents region-related issues when working with AWS resources.
     """,
@@ -80,6 +80,7 @@ mcp = FastMCP(
 )
 
 
+@handle_exceptions
 def get_kinesis_client(region_name: str = DEFAULT_REGION):
     """Create a boto3 Kinesis client using credentials from environment variables. Falls back to 'us-west-2' if no region is specified or found in environment."""
     # Use provided region, or get from env, or fall back to us-west-2
@@ -246,7 +247,7 @@ def create_stream(
     Args:
         stream_name: A name to identify the stream
         shard_count: Number of shards to create (default: 1)
-        stream_mode_details: Details about the stream mode (default: {"StreamMode": "PROVISIONED"})
+        stream_mode_details: Details about the stream mode (default: {"StreamMode": "ON_DEMAND"})
         tags: Tags to associate with the stream
         region_name: Region to perform API operation (default: 'us-west-2')
 
