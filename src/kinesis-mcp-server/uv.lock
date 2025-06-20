@@ -41,6 +41,7 @@ version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
+    { name = "botocore" },
     { name = "httpx" },
     { name = "loguru" },
     { name = "mcp", extra = ["cli"] },
@@ -63,9 +64,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.38.30" },
+    { name = "botocore", specifier = ">=1.38.30" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "loguru", specifier = ">=0.7.0" },
-    { name = "mcp", extras = ["cli"], specifier = ">=1.6.0" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.9.2" },
     { name = "pydantic", specifier = ">=2.10.6" },
 ]
