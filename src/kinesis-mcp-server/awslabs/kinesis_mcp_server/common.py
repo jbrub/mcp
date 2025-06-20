@@ -21,6 +21,9 @@ def handle_exceptions(func: Callable) -> Callable:
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
+        except (ValueError, TypeError):
+            # Always re-raise validation errors - these should be visible to users
+            raise
         except Exception as e:
             print(f'An error occurred: {e}')
             # Re-raise the exception during testing

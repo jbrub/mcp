@@ -16,6 +16,7 @@
 
 import boto3
 import os
+import re
 from awslabs.kinesis_mcp_server.common import (
     CreateStreamInput,
     DescribeStreamSummaryInput,
@@ -50,8 +51,8 @@ from awslabs.kinesis_mcp_server.consts import (
     MIN_STREAM_ARN_LENGTH,
     MIN_STREAM_NAME_LENGTH,
     MIN_TAG_KEY_LENGTH,
-    STREAM_MODE_ON_DEMAND,
     # Stream modes
+    STREAM_MODE_ON_DEMAND,
     STREAM_MODE_PROVISIONED,
 )
 from botocore.config import Config
@@ -245,8 +246,8 @@ def create_stream(
     """Creates a new Kinesis data stream with the specified name and shard count.
 
     Args:
-        stream_name: A name to identify the stream
-        shard_count: Number of shards to create (default: 1)
+        stream_name: A name to identify the stream, must follow Kinesis naming conventions
+        shard_count: Number of shards to create (default: 1), only used if stream_mode_details is set to PROVISIONED
         stream_mode_details: Details about the stream mode (default: {"StreamMode": "ON_DEMAND"})
         tags: Tags to associate with the stream
         region_name: Region to perform API operation (default: 'us-west-2')
@@ -265,6 +266,14 @@ def create_stream(
         raise ValueError(
             f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
         )
+
+    if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+        raise ValueError(
+            'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+        )
+
+    if stream_name.lower().startswith('aws:'):
+        raise ValueError('stream_name cannot start with "aws:"')
 
     # Validate shard_count
     if not isinstance(shard_count, int):
