@@ -73,10 +73,6 @@ mcp = FastMCP(
 
     This helps ensure clarity and prevents region-related issues when working with AWS resources.
     """,
-    dependencies=[
-        'pydantic',
-        'loguru',
-    ],
     version='alpha',
 )
 
