@@ -19,6 +19,7 @@ import boto3
 import os
 import pytest
 import sys
+from datetime import datetime
 from moto import mock_aws
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +29,7 @@ from awslabs.kinesis_mcp_server.consts import (
     MAX_LENGTH_SHARD_ITERATOR,
     MAX_LIMIT,
     MAX_RECORDS,
+    MAX_SHARD_ID_LENGTH,
     MAX_STREAM_ARN_LENGTH,
     MAX_STREAM_NAME_LENGTH,
     MAX_TAG_KEY_LENGTH,
@@ -35,11 +37,13 @@ from awslabs.kinesis_mcp_server.consts import (
     MAX_TAGS_COUNT,
     MIN_RECORDS,
     STREAM_MODE_ON_DEMAND,
+    VALID_SHARD_ITERATOR_TYPES,
 )
 from awslabs.kinesis_mcp_server.server import (
     create_stream,
     describe_stream_summary,
     get_records,
+    get_shard_iterator,
     list_streams,
     put_records,
 )
@@ -567,3 +571,340 @@ def test_describe_stream_summary_invalid_stream_arn_length(mock_kinesis_client):
         long_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * (MAX_STREAM_ARN_LENGTH)
         with pytest.raises(ValueError, match='stream_arn length must be between'):
             describe_stream_summary(stream_arn=long_arn, region_name='us-west-2')
+
+
+"""get_shard_iterator Tests"""
+
+
+def test_get_shard_iterator_success_with_stream_name(mock_kinesis_client):
+    """Test successful get_shard_iterator with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator-123'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        result = get_shard_iterator(
+            shard_id='shardId-000000000000',
+            shard_iterator_type='TRIM_HORIZON',
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        assert result['ShardIterator'] == 'test-iterator-123'
+        mock_kinesis_client.get_shard_iterator.assert_called_with(
+            ShardId='shardId-000000000000',
+            ShardIteratorType='TRIM_HORIZON',
+            StreamName='test-stream',
+        )
+
+
+def test_get_shard_iterator_success_with_stream_arn(mock_kinesis_client):
+    """Test successful get_shard_iterator with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator-456'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = get_shard_iterator(
+            shard_id='shardId-000000000001',
+            shard_iterator_type='LATEST',
+            stream_arn=stream_arn,
+            region_name='us-west-2',
+        )
+
+        assert result['ShardIterator'] == 'test-iterator-456'
+        mock_kinesis_client.get_shard_iterator.assert_called_with(
+            ShardId='shardId-000000000001', ShardIteratorType='LATEST', StreamARN=stream_arn
+        )
+
+
+def test_get_shard_iterator_with_sequence_number(mock_kinesis_client):
+    """Test get_shard_iterator with starting sequence number."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator-seq'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        result = get_shard_iterator(
+            shard_id='shardId-000000000000',
+            shard_iterator_type='AT_SEQUENCE_NUMBER',
+            stream_name='test-stream',
+            starting_sequence_number='49590338271490256608559692538361571095921575989136588801',
+            region_name='us-west-2',
+        )
+
+        assert result['ShardIterator'] == 'test-iterator-seq'
+        mock_kinesis_client.get_shard_iterator.assert_called_with(
+            ShardId='shardId-000000000000',
+            ShardIteratorType='AT_SEQUENCE_NUMBER',
+            StreamName='test-stream',
+            StartingSequenceNumber='49590338271490256608559692538361571095921575989136588801',
+        )
+
+
+def test_get_shard_iterator_with_timestamp(mock_kinesis_client):
+    """Test get_shard_iterator with timestamp."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator-timestamp'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        test_timestamp = datetime(2023, 1, 1, 12, 0, 0)
+        result = get_shard_iterator(
+            shard_id='shardId-000000000000',
+            shard_iterator_type='AT_TIMESTAMP',
+            stream_name='test-stream',
+            timestamp=test_timestamp,
+            region_name='us-west-2',
+        )
+
+        assert result['ShardIterator'] == 'test-iterator-timestamp'
+        mock_kinesis_client.get_shard_iterator.assert_called_with(
+            ShardId='shardId-000000000000',
+            ShardIteratorType='AT_TIMESTAMP',
+            StreamName='test-stream',
+            Timestamp=test_timestamp,
+        )
+
+
+def test_get_shard_iterator_missing_shard_id(mock_kinesis_client):
+    """Test get_shard_iterator with missing shard_id."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='shard_id is required'):
+            get_shard_iterator(
+                shard_id='', shard_iterator_type='TRIM_HORIZON', stream_name='test-stream'
+            )
+
+
+def test_get_shard_iterator_invalid_shard_id_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid shard_id type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='shard_id must be a string'):
+            get_shard_iterator(
+                shard_id=123, shard_iterator_type='TRIM_HORIZON', stream_name='test-stream'
+            )
+
+
+def test_get_shard_iterator_invalid_shard_id_length(mock_kinesis_client):
+    """Test get_shard_iterator with invalid shard_id length."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_shard_id = 'a' * (MAX_SHARD_ID_LENGTH + 1)
+        with pytest.raises(ValueError, match='shard_id length must be between'):
+            get_shard_iterator(
+                shard_id=long_shard_id,
+                shard_iterator_type='TRIM_HORIZON',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_invalid_shard_id_format(mock_kinesis_client):
+    """Test get_shard_iterator with invalid shard_id format."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='shard_id can only contain'):
+            get_shard_iterator(
+                shard_id='shard@invalid',
+                shard_iterator_type='TRIM_HORIZON',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_invalid_iterator_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid shard_iterator_type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='shard_iterator_type must be one of'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='INVALID_TYPE',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_invalid_stream_name_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid stream_name type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='TRIM_HORIZON',
+                stream_name=123,
+            )
+
+
+def test_get_shard_iterator_invalid_stream_name_length(mock_kinesis_client):
+    """Test get_shard_iterator with invalid stream_name length."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_stream_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='TRIM_HORIZON',
+                stream_name=long_stream_name,
+            )
+
+
+def test_get_shard_iterator_invalid_stream_arn_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid stream_arn type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_arn must be a string'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000', shard_iterator_type='TRIM_HORIZON', stream_arn=123
+            )
+
+
+def test_get_shard_iterator_invalid_stream_arn_length(mock_kinesis_client):
+    """Test get_shard_iterator with invalid stream_arn length."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_stream_arn = (
+            'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * MAX_STREAM_ARN_LENGTH
+        )
+        with pytest.raises(ValueError, match='stream_arn length must be between'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='TRIM_HORIZON',
+                stream_arn=long_stream_arn,
+            )
+
+
+def test_get_shard_iterator_missing_sequence_number_for_at_sequence(mock_kinesis_client):
+    """Test get_shard_iterator missing sequence number for AT_SEQUENCE_NUMBER."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='starting_sequence_number is required'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='AT_SEQUENCE_NUMBER',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_missing_sequence_number_for_after_sequence(mock_kinesis_client):
+    """Test get_shard_iterator missing sequence number for AFTER_SEQUENCE_NUMBER."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='starting_sequence_number is required'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='AFTER_SEQUENCE_NUMBER',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_invalid_sequence_number_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid starting_sequence_number type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='starting_sequence_number must be a string'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='AT_SEQUENCE_NUMBER',
+                stream_name='test-stream',
+                starting_sequence_number=123,
+            )
+
+
+def test_get_shard_iterator_missing_timestamp_for_at_timestamp(mock_kinesis_client):
+    """Test get_shard_iterator missing timestamp for AT_TIMESTAMP."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='timestamp is required for AT_TIMESTAMP'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='AT_TIMESTAMP',
+                stream_name='test-stream',
+            )
+
+
+def test_get_shard_iterator_invalid_timestamp_type(mock_kinesis_client):
+    """Test get_shard_iterator with invalid timestamp type."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='timestamp must be a datetime object or string'):
+            get_shard_iterator(
+                shard_id='shardId-000000000000',
+                shard_iterator_type='AT_TIMESTAMP',
+                stream_name='test-stream',
+                timestamp=123,
+            )
+
+
+def test_get_shard_iterator_all_valid_iterator_types(mock_kinesis_client):
+    """Test get_shard_iterator with all valid iterator types."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        for iterator_type in VALID_SHARD_ITERATOR_TYPES:
+            kwargs = {
+                'shard_id': 'shardId-000000000000',
+                'shard_iterator_type': iterator_type,
+                'stream_name': 'test-stream',
+                'region_name': 'us-west-2',
+            }
+
+            # Add required parameters for specific iterator types
+            if iterator_type in ['AT_SEQUENCE_NUMBER', 'AFTER_SEQUENCE_NUMBER']:
+                kwargs['starting_sequence_number'] = (
+                    '49590338271490256608559692538361571095921575989136588801'
+                )
+            elif iterator_type == 'AT_TIMESTAMP':
+                kwargs['timestamp'] = datetime(2023, 1, 1, 12, 0, 0)
+
+            result = get_shard_iterator(**kwargs)
+            assert result['ShardIterator'] == 'test-iterator'
+
+
+def test_get_shard_iterator_with_both_stream_identifiers(mock_kinesis_client):
+    """Test get_shard_iterator with both stream_name and stream_arn."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {'ShardIterator': 'test-iterator-both'}
+        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = get_shard_iterator(
+            shard_id='shardId-000000000000',
+            shard_iterator_type='TRIM_HORIZON',
+            stream_name='test-stream',
+            stream_arn=stream_arn,
+            region_name='us-west-2',
+        )
+
+        assert result['ShardIterator'] == 'test-iterator-both'
+        # Both should be included in the API call
+        mock_kinesis_client.get_shard_iterator.assert_called_with(
+            ShardId='shardId-000000000000',
+            ShardIteratorType='TRIM_HORIZON',
+            StreamName='test-stream',
+            StreamARN=stream_arn,
+        )

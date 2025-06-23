@@ -60,7 +60,7 @@ from awslabs.kinesis_mcp_server.consts import (
 from botocore.config import Config
 from datetime import datetime
 from mcp.server.fastmcp import FastMCP
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 
 # MCP Server Declaration
@@ -274,12 +274,13 @@ def create_stream(
     if stream_name.lower().startswith('aws:'):
         raise ValueError('stream_name cannot start with "aws:"')
 
-    # Validate shard_count
-    if not isinstance(shard_count, int):
-        raise TypeError('shard_count must be an integer')
+    # Validate shard_count if provided
+    if shard_count is not None:
+        if not isinstance(shard_count, int):
+            raise TypeError('shard_count must be an integer')
 
-    if shard_count < MIN_SHARDS_PER_STREAM or shard_count > MAX_SHARDS_PER_STREAM:
-        raise ValueError(f'shard_count must be between 1 and {MAX_SHARDS_PER_STREAM}')
+        if shard_count < MIN_SHARDS_PER_STREAM or shard_count > MAX_SHARDS_PER_STREAM:
+            raise ValueError(f'shard_count must be between 1 and {MAX_SHARDS_PER_STREAM}')
 
     # Validate stream_mode_details
     if stream_mode_details is not None and not isinstance(stream_mode_details, dict):
@@ -453,7 +454,7 @@ def get_shard_iterator(
     stream_name: str = None,
     stream_arn: str = None,
     starting_sequence_number: str = None,
-    timestamp: datetime = None,
+    timestamp: Union[datetime, str] = None,
     region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
     """Retrieves a shard iterator for a specified shard.
@@ -523,8 +524,8 @@ def get_shard_iterator(
     # Validate timestamp if required
     if shard_iterator_type == 'AT_TIMESTAMP' and timestamp is None:
         raise ValueError('timestamp is required for AT_TIMESTAMP shard iterator type')
-    if timestamp is not None and not isinstance(timestamp, datetime):
-        raise TypeError('timestamp must be a datetime object')
+    if timestamp is not None and not isinstance(timestamp, (datetime, str)):
+        raise TypeError('timestamp must be a datetime object or string')
 
     # Build Paramaters
     params: GetShardIteratorInput = {

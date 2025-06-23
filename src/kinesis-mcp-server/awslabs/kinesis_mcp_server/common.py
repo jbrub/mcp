@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Union
 from typing_extensions import TypedDict
 
 
@@ -122,4 +122,4 @@ class GetShardIteratorInput(TypedDict, total=False):
     StreamName: str  # Optional
     StreamARN: str  # Optional
     StartingSequenceNumber: str  # Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
-    Timestamp: datetime  # Optional - Required if ShardIteratorType is AT_TIMESTAMP
+    Timestamp: Union[datetime, str]  # Optional - Required if ShardIteratorType is AT_TIMESTAMP
