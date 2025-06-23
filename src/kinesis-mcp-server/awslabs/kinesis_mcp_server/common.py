@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List
 from typing_extensions import TypedDict
@@ -102,3 +103,23 @@ class DescribeStreamSummaryInput(TypedDict, total=False):
 
     StreamName: str  # Optional - Either StreamName or StreamARN required
     StreamARN: str  # Optional
+
+
+class GetShardIteratorInput(TypedDict, total=False):
+    """Input parameters for the get_shard_iterator operation.
+
+    Attributes:
+        ShardId: ID of the shard
+        ShardIteratorType: Type of shard iterator
+        StreamName: Name of the stream
+        StreamARN: ARN of the stream
+        StartingSequenceNumber: Starting sequence number (required for AT_SEQUENCE_NUMBER and AFTER_SEQUENCE_NUMBER)
+        Timestamp: Timestamp (required for AT_TIMESTAMP)
+    """
+
+    ShardId: str  # Required
+    ShardIteratorType: str  # Required - Valid values: AT_SEQUENCE_NUMBER | AFTER_SEQUENCE_NUMBER | TRIM_HORIZON | LATEST | AT_TIMESTAMP
+    StreamName: str  # Optional
+    StreamARN: str  # Optional
+    StartingSequenceNumber: str  # Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
+    Timestamp: datetime  # Optional - Required if ShardIteratorType is AT_TIMESTAMP

@@ -21,41 +21,44 @@ from awslabs.kinesis_mcp_server.common import (
     CreateStreamInput,
     DescribeStreamSummaryInput,
     GetRecordsInput,
+    GetShardIteratorInput,
     ListStreamsInput,
     PutRecordsInput,
     handle_exceptions,
 )
 from awslabs.kinesis_mcp_server.consts import (
     DEFAULT_GET_RECORDS_LIMIT,
-    # Default Region
+    # Defaults
     DEFAULT_REGION,
-    # Default values
     DEFAULT_SHARD_COUNT,
     DEFAULT_STREAM_LIMIT,
     MAX_LENGTH_SHARD_ITERATOR,
-    # get_records constants
     MAX_LIMIT,
-    # put_records constants
+    # Function-specific constants
     MAX_RECORDS,
+    MAX_SHARD_ID_LENGTH,
     MAX_SHARDS_PER_STREAM,
     MAX_STREAM_ARN_LENGTH,
     # Shared constants
     MAX_STREAM_NAME_LENGTH,
     MAX_TAG_KEY_LENGTH,
     MAX_TAG_VALUE_LENGTH,
-    # create_stream constants
     MAX_TAGS_COUNT,
     MIN_LENGTH_SHARD_ITERATOR,
     MIN_LIMIT,
     MIN_RECORDS,
+    MIN_SHARD_ID_LENGTH,
+    MIN_SHARDS_PER_STREAM,
     MIN_STREAM_ARN_LENGTH,
     MIN_STREAM_NAME_LENGTH,
     MIN_TAG_KEY_LENGTH,
     # Stream modes
     STREAM_MODE_ON_DEMAND,
     STREAM_MODE_PROVISIONED,
+    VALID_SHARD_ITERATOR_TYPES,
 )
 from botocore.config import Config
+from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 from typing import Any, Dict, List
 
@@ -234,7 +237,7 @@ def get_records(
 @handle_exceptions
 def create_stream(
     stream_name: str,
-    shard_count: int = DEFAULT_SHARD_COUNT,
+    shard_count: int = None,
     stream_mode_details: Dict[str, str] = {'StreamMode': STREAM_MODE_ON_DEMAND},
     tags: Dict[str, str] = None,
     region_name: str = DEFAULT_REGION,
@@ -275,7 +278,7 @@ def create_stream(
     if not isinstance(shard_count, int):
         raise TypeError('shard_count must be an integer')
 
-    if shard_count < 1 or shard_count > MAX_SHARDS_PER_STREAM:
+    if shard_count < MIN_SHARDS_PER_STREAM or shard_count > MAX_SHARDS_PER_STREAM:
         raise ValueError(f'shard_count must be between 1 and {MAX_SHARDS_PER_STREAM}')
 
     # Validate stream_mode_details
@@ -312,7 +315,7 @@ def create_stream(
 
     # Add ShardCount only for PROVISIONED mode
     if stream_mode_details.get('StreamMode') == STREAM_MODE_PROVISIONED:
-        params['ShardCount'] = shard_count
+        params['ShardCount'] = DEFAULT_SHARD_COUNT if shard_count is None else shard_count
 
     # Add tags if provided
     if tags is not None:
@@ -439,6 +442,112 @@ def describe_stream_summary(
     response = kinesis.describe_stream_summary(**params)
 
     # Return Stream Summary Details
+    return response
+
+
+@mcp.tool('get_shard_iterator')
+@handle_exceptions
+def get_shard_iterator(
+    shard_id: str,
+    shard_iterator_type: str,
+    stream_name: str = None,
+    stream_arn: str = None,
+    starting_sequence_number: str = None,
+    timestamp: datetime = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Retrieves a shard iterator for a specified shard.
+
+    Args:
+        shard_id: Shard ID to retrieve the iterator for
+        shard_iterator_type: Type of shard iterator to retrieve (AT_SEQUENCE_NUMBER, AFTER_SEQUENCE_NUMBER, TRIM_HORIZON, LATEST, AT_TIMESTAMP)
+        stream_name: Name of the stream to retrieve the shard iterator for
+        stream_arn: ARN of the stream to retrieve the shard iterator for
+        starting_sequence_number: Sequence number to start retrieving records from
+        timestamp: Timestamp to start retrieving records from
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the shard iterator
+    """
+    # Validate shard_id
+    if not shard_id:
+        raise ValueError('shard_id is required')
+    if not isinstance(shard_id, str):
+        raise TypeError('shard_id must be a string')
+    if len(shard_id) < MIN_SHARD_ID_LENGTH or len(shard_id) > MAX_SHARD_ID_LENGTH:
+        raise ValueError(
+            f'shard_id length must be between {MIN_SHARD_ID_LENGTH} and {MAX_SHARD_ID_LENGTH} characters'
+        )
+    if not re.match(r'^[a-zA-Z0-9_.-]+$', shard_id):
+        raise ValueError(
+            'shard_id can only contain alphanumeric characters, underscores, periods, and hyphens'
+        )
+
+    # Validate shard_iterator_type
+    if shard_iterator_type not in VALID_SHARD_ITERATOR_TYPES:
+        raise ValueError(f'shard_iterator_type must be one of {VALID_SHARD_ITERATOR_TYPES}')
+
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Validate starting_sequence_number if required
+    if (
+        shard_iterator_type in ['AT_SEQUENCE_NUMBER', 'AFTER_SEQUENCE_NUMBER']
+        and starting_sequence_number is None
+    ):
+        raise ValueError(
+            'starting_sequence_number is required for AT_SEQUENCE_NUMBER and AFTER_SEQUENCE_NUMBER shard iterator types'
+        )
+
+    if starting_sequence_number is not None and not isinstance(starting_sequence_number, str):
+        raise TypeError('starting_sequence_number must be a string')
+
+    # Validate timestamp if required
+    if shard_iterator_type == 'AT_TIMESTAMP' and timestamp is None:
+        raise ValueError('timestamp is required for AT_TIMESTAMP shard iterator type')
+    if timestamp is not None and not isinstance(timestamp, datetime):
+        raise TypeError('timestamp must be a datetime object')
+
+    # Build Paramaters
+    params: GetShardIteratorInput = {
+        'ShardId': shard_id,
+        'ShardIteratorType': shard_iterator_type,
+    }
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+
+    if starting_sequence_number is not None:
+        params['StartingSequenceNumber'] = starting_sequence_number
+
+    if timestamp is not None:
+        params['Timestamp'] = timestamp
+
+    # Call Kinesis API to get the shard iterator
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.get_shard_iterator(**params)
+
+    # Return Shard Iterator Details
     return response
 
 
