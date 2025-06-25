@@ -123,3 +123,79 @@ class GetShardIteratorInput(TypedDict, total=False):
     StreamARN: str  # Optional
     StartingSequenceNumber: str  # Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
     Timestamp: Union[datetime, str]  # Optional - Required if ShardIteratorType is AT_TIMESTAMP
+
+
+class UpdateStreamModeInput(TypedDict, total=False):
+    """Input parameters for the update_stream_mode operation.
+
+    Attributes:
+        StreamName: Name of the stream to update
+        StreamModeDetails: Details about the new stream mode
+    """
+
+    StreamName: str  # Required
+    StreamModeDetails: Dict[str, str]  # Required - Valid values: PROVISIONED | ON_DEMAND
+
+
+class UpdateShardCountInput(TypedDict, total=False):
+    """Input parameters for the update_shard_count operation.
+
+    Attributes:
+        StreamName: Name of the stream to update
+        TargetShardCount: New target shard count
+        ScalingType: Type of scaling operation
+    """
+
+    StreamName: str  # Required
+    TargetShardCount: int  # Required - New target shard count
+    ScalingType: str  # Required - Valid values: UNIFORM_SCALING | STANDARD_SCALING
+
+
+class AddTagsToStreamInput(TypedDict, total=False):
+    """Input parameters for the add_tags_to_stream operation.
+
+    Attributes:
+        StreamName: Name of the stream to add tags to
+        Tags: Tags to add to the stream
+    """
+
+    StreamName: str  # Required
+    Tags: Dict[str, str]  # Required
+
+
+class RemoveTagsFromStreamInput(TypedDict, total=False):
+    """Input parameters for the remove_tags_from_stream operation.
+
+    Attributes:
+        StreamName: Name of the stream to remove tags from
+        TagKeys: List of tag keys to remove
+    """
+
+    StreamName: str  # Required
+    TagKeys: List[str]  # Required - List of tag keys to remove
+
+
+class StartStreamEncryptionInput(TypedDict, total=False):
+    """Input parameters for the start_stream_encryption operation.
+
+    Attributes:
+        StreamName: Name of the stream to encrypt
+        EncryptionType: Type of encryption to use
+        KeyId: ID of the KMS key to use for encryption
+    """
+
+    StreamName: str  # Required
+    EncryptionType: str  # Required - Valid values: KMS | NONE
+    KeyId: str  # Required - KMS key ID or alias
+
+
+class StopStreamEncryptionInput(TypedDict, total=False):
+    """Input parameters for the stop_stream_encryption operation.
+
+    Attributes:
+        StreamName: Name of the stream to stop encryption on
+        EncryptionType: Type of encryption to stop
+    """
+
+    StreamName: str  # Required
+    EncryptionType: str  # Required - Valid values: KMS | NONE

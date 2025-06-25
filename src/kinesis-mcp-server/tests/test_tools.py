@@ -920,3 +920,711 @@ def test_get_shard_iterator_with_both_stream_identifiers(mock_kinesis_client):
             StreamName='test-stream',
             StreamARN=stream_arn,
         )
+
+
+# ==============================================================================
+#                       update_stream_mode Error Tests
+# ==============================================================================
+
+
+def test_update_stream_mode_missing_stream_name(mock_kinesis_client):
+    """Test update_stream_mode with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            update_stream_mode(
+                stream_name='',
+                stream_mode_details={'StreamMode': 'ON_DEMAND'},
+                region_name='us-west-2',
+            )
+
+
+def test_update_stream_mode_invalid_stream_mode_details(mock_kinesis_client):
+    """Test update_stream_mode with invalid stream mode details."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_mode_details must contain "StreamMode" key'):
+            update_stream_mode(
+                stream_name='test-stream',
+                stream_mode_details={'InvalidKey': 'ON_DEMAND'},
+                region_name='us-west-2',
+            )
+
+
+def test_update_stream_mode_success(mock_kinesis_client):
+    """Test successful update_stream_mode."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.update_stream_mode = MagicMock(return_value={})
+
+        update_stream_mode(
+            stream_name='test-stream',
+            stream_mode_details={'StreamMode': 'PROVISIONED'},
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.update_stream_mode.assert_called_with(
+            StreamName='test-stream', StreamModeDetails={'StreamMode': 'PROVISIONED'}
+        )
+
+
+# ==============================================================================
+#                       update_shard_count Error Tests
+# ==============================================================================
+
+
+def test_update_shard_count_missing_stream_name(mock_kinesis_client):
+    """Test update_shard_count with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            update_shard_count(
+                stream_name='',
+                target_shard_count=2,
+                scaling_type='UNIFORM_SCALING',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_invalid_target_shard_count(mock_kinesis_client):
+    """Test update_shard_count with invalid target shard count."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='target_shard_count must be greater than 0'):
+            update_shard_count(
+                stream_name='test-stream',
+                target_shard_count=0,
+                scaling_type='UNIFORM_SCALING',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_invalid_scaling_type(mock_kinesis_client):
+    """Test update_shard_count with invalid scaling type."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='Invalid scaling_type'):
+            update_shard_count(
+                stream_name='test-stream',
+                target_shard_count=2,
+                scaling_type='INVALID_TYPE',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_success(mock_kinesis_client):
+    """Test successful update_shard_count."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.update_shard_count = MagicMock(return_value={})
+
+        update_shard_count(
+            stream_name='test-stream',
+            target_shard_count=4,
+            scaling_type='UNIFORM_SCALING',
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.update_shard_count.assert_called_with(
+            StreamName='test-stream', TargetShardCount=4, ScalingType='UNIFORM_SCALING'
+        )
+
+
+# ==============================================================================
+#                       add_tags_to_stream Error Tests
+# ==============================================================================
+
+
+def test_add_tags_to_stream_missing_stream_name(mock_kinesis_client):
+    """Test add_tags_to_stream with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            add_tags_to_stream(stream_name='', tags={'key': 'value'}, region_name='us-west-2')
+
+
+def test_add_tags_to_stream_invalid_tags_type(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid tags type."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='tags must be a dictionary'):
+            add_tags_to_stream(
+                stream_name='test-stream', tags='not-a-dict', region_name='us-west-2'
+            )
+
+
+def test_add_tags_to_stream_success(mock_kinesis_client):
+    """Test successful add_tags_to_stream."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.add_tags_to_stream = MagicMock(return_value={})
+
+        tags = {'Environment': 'test', 'Owner': 'team'}
+        add_tags_to_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
+
+        mock_kinesis_client.add_tags_to_stream.assert_called_with(
+            StreamName='test-stream', Tags=tags
+        )
+
+
+# ==============================================================================
+#                       remove_tags_from_stream Error Tests
+# ==============================================================================
+
+
+def test_remove_tags_from_stream_missing_stream_name(mock_kinesis_client):
+    """Test remove_tags_from_stream with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            remove_tags_from_stream(stream_name='', tag_keys=['key1'], region_name='us-west-2')
+
+
+def test_remove_tags_from_stream_invalid_tag_keys_type(mock_kinesis_client):
+    """Test remove_tags_from_stream with invalid tag_keys type."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='tag_keys must be a list'):
+            remove_tags_from_stream(
+                stream_name='test-stream', tag_keys='not-a-list', region_name='us-west-2'
+            )
+
+
+def test_remove_tags_from_stream_empty_tag_keys(mock_kinesis_client):
+    """Test remove_tags_from_stream with empty tag_keys."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='tag_keys cannot be empty'):
+            remove_tags_from_stream(
+                stream_name='test-stream', tag_keys=[], region_name='us-west-2'
+            )
+
+
+def test_remove_tags_from_stream_success(mock_kinesis_client):
+    """Test successful remove_tags_from_stream."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.remove_tags_from_stream = MagicMock(return_value={})
+
+        tag_keys = ['Environment', 'Owner']
+        remove_tags_from_stream(
+            stream_name='test-stream', tag_keys=tag_keys, region_name='us-west-2'
+        )
+
+        mock_kinesis_client.remove_tags_from_stream.assert_called_with(
+            StreamName='test-stream', TagKeys=tag_keys
+        )
+
+
+# ==============================================================================
+#                       start_stream_encryption Error Tests
+# ==============================================================================
+
+
+def test_start_stream_encryption_missing_stream_name(mock_kinesis_client):
+    """Test start_stream_encryption with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            start_stream_encryption(stream_name='', region_name='us-west-2')
+
+
+def test_start_stream_encryption_invalid_encryption_type(mock_kinesis_client):
+    """Test start_stream_encryption with invalid encryption type."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='Invalid encryption_type'):
+            start_stream_encryption(
+                stream_name='test-stream', encryption_type='INVALID_TYPE', region_name='us-west-2'
+            )
+
+
+def test_start_stream_encryption_success(mock_kinesis_client):
+    """Test successful start_stream_encryption."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.start_stream_encryption = MagicMock(return_value={})
+
+        start_stream_encryption(
+            stream_name='test-stream',
+            encryption_type='KMS',
+            key_id='alias/aws/kinesis',
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.start_stream_encryption.assert_called_with(
+            StreamName='test-stream', EncryptionType='KMS', KeyId='alias/aws/kinesis'
+        )
+
+
+# ==============================================================================
+#                       stop_stream_encryption Error Tests
+# ==============================================================================
+
+
+def test_stop_stream_encryption_missing_stream_name(mock_kinesis_client):
+    """Test stop_stream_encryption with missing stream name."""
+    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='stream_name is required'):
+            stop_stream_encryption(stream_name='', region_name='us-west-2')
+
+
+def test_stop_stream_encryption_invalid_encryption_type(mock_kinesis_client):
+    """Test stop_stream_encryption with invalid encryption type."""
+    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='Invalid encryption_type'):
+            stop_stream_encryption(
+                stream_name='test-stream', encryption_type='INVALID_TYPE', region_name='us-west-2'
+            )
+
+
+def test_stop_stream_encryption_success(mock_kinesis_client):
+    """Test successful stop_stream_encryption."""
+    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.stop_stream_encryption = MagicMock(return_value={})
+
+        stop_stream_encryption(
+            stream_name='test-stream', encryption_type='KMS', region_name='us-west-2'
+        )
+
+        mock_kinesis_client.stop_stream_encryption.assert_called_with(
+            StreamName='test-stream', EncryptionType='KMS'
+        )
+
+
+# ==============================================================================
+#                       update_stream_mode Additional Tests
+# ==============================================================================
+
+
+def test_update_stream_mode_invalid_stream_name_type(mock_kinesis_client):
+    """Test update_stream_mode with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            update_stream_mode(
+                stream_name=123,
+                stream_mode_details={'StreamMode': 'ON_DEMAND'},
+                region_name='us-west-2',
+            )
+
+
+def test_update_stream_mode_invalid_stream_name_length(mock_kinesis_client):
+    """Test update_stream_mode with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            update_stream_mode(
+                stream_name=long_name,
+                stream_mode_details={'StreamMode': 'ON_DEMAND'},
+                region_name='us-west-2',
+            )
+
+
+def test_update_stream_mode_invalid_stream_mode_details_type(mock_kinesis_client):
+    """Test update_stream_mode with invalid stream mode details type."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_mode_details must be a dictionary'):
+            update_stream_mode(
+                stream_name='test-stream',
+                stream_mode_details='not-a-dict',
+                region_name='us-west-2',
+            )
+
+
+def test_update_stream_mode_invalid_stream_mode_value(mock_kinesis_client):
+    """Test update_stream_mode with invalid stream mode value."""
+    from awslabs.kinesis_mcp_server.server import update_stream_mode
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(ValueError, match='Invalid StreamMode'):
+            update_stream_mode(
+                stream_name='test-stream',
+                stream_mode_details={'StreamMode': 'INVALID_MODE'},
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       update_shard_count Additional Tests
+# ==============================================================================
+
+
+def test_update_shard_count_invalid_stream_name_type(mock_kinesis_client):
+    """Test update_shard_count with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            update_shard_count(
+                stream_name=123,
+                target_shard_count=2,
+                scaling_type='UNIFORM_SCALING',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_invalid_stream_name_length(mock_kinesis_client):
+    """Test update_shard_count with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            update_shard_count(
+                stream_name=long_name,
+                target_shard_count=2,
+                scaling_type='UNIFORM_SCALING',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_invalid_target_shard_count_type(mock_kinesis_client):
+    """Test update_shard_count with invalid target shard count type."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='target_shard_count must be an integer'):
+            update_shard_count(
+                stream_name='test-stream',
+                target_shard_count='not-an-int',
+                scaling_type='UNIFORM_SCALING',
+                region_name='us-west-2',
+            )
+
+
+def test_update_shard_count_invalid_scaling_type_type(mock_kinesis_client):
+    """Test update_shard_count with invalid scaling type type."""
+    from awslabs.kinesis_mcp_server.server import update_shard_count
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='scaling_type must be a string'):
+            update_shard_count(
+                stream_name='test-stream',
+                target_shard_count=2,
+                scaling_type=123,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       add_tags_to_stream Additional Tests
+# ==============================================================================
+
+
+def test_add_tags_to_stream_invalid_stream_name_type(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            add_tags_to_stream(stream_name=123, tags={'key': 'value'}, region_name='us-west-2')
+
+
+def test_add_tags_to_stream_invalid_stream_name_length(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            add_tags_to_stream(
+                stream_name=long_name, tags={'key': 'value'}, region_name='us-west-2'
+            )
+
+
+def test_add_tags_to_stream_too_many_tags(mock_kinesis_client):
+    """Test add_tags_to_stream with too many tags."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        tags = {f'key-{i}': f'value-{i}' for i in range(MAX_TAGS_COUNT + 1)}
+        with pytest.raises(ValueError, match='Number of tags cannot exceed'):
+            add_tags_to_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
+
+
+def test_add_tags_to_stream_invalid_tag_key_type(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid tag key type."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='Tag keys and values must be strings'):
+            add_tags_to_stream(
+                stream_name='test-stream', tags={123: 'value'}, region_name='us-west-2'
+            )
+
+
+def test_add_tags_to_stream_invalid_tag_key_length(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid tag key length."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_key = 'a' * (MAX_TAG_KEY_LENGTH + 1)
+        with pytest.raises(ValueError, match='Tag key length must be between'):
+            add_tags_to_stream(
+                stream_name='test-stream', tags={long_key: 'value'}, region_name='us-west-2'
+            )
+
+
+def test_add_tags_to_stream_invalid_tag_value_length(mock_kinesis_client):
+    """Test add_tags_to_stream with invalid tag value length."""
+    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_value = 'a' * (MAX_TAG_VALUE_LENGTH + 1)
+        with pytest.raises(ValueError, match='Tag value length cannot exceed'):
+            add_tags_to_stream(
+                stream_name='test-stream', tags={'key': long_value}, region_name='us-west-2'
+            )
+
+
+# ==============================================================================
+#                       remove_tags_from_stream Additional Tests
+# ==============================================================================
+
+
+def test_remove_tags_from_stream_invalid_stream_name_type(mock_kinesis_client):
+    """Test remove_tags_from_stream with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            remove_tags_from_stream(stream_name=123, tag_keys=['key1'], region_name='us-west-2')
+
+
+def test_remove_tags_from_stream_invalid_stream_name_length(mock_kinesis_client):
+    """Test remove_tags_from_stream with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            remove_tags_from_stream(
+                stream_name=long_name, tag_keys=['key1'], region_name='us-west-2'
+            )
+
+
+def test_remove_tags_from_stream_too_many_tag_keys(mock_kinesis_client):
+    """Test remove_tags_from_stream with too many tag keys."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        tag_keys = [f'key-{i}' for i in range(MAX_TAGS_COUNT + 1)]
+        with pytest.raises(ValueError, match='Number of tag keys cannot exceed'):
+            remove_tags_from_stream(
+                stream_name='test-stream', tag_keys=tag_keys, region_name='us-west-2'
+            )
+
+
+def test_remove_tags_from_stream_invalid_tag_key_type(mock_kinesis_client):
+    """Test remove_tags_from_stream with invalid tag key type."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='Tag keys must be strings'):
+            remove_tags_from_stream(
+                stream_name='test-stream', tag_keys=[123], region_name='us-west-2'
+            )
+
+
+def test_remove_tags_from_stream_invalid_tag_key_length(mock_kinesis_client):
+    """Test remove_tags_from_stream with invalid tag key length."""
+    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_key = 'a' * (MAX_TAG_KEY_LENGTH + 1)
+        with pytest.raises(ValueError, match='Tag key length must be between'):
+            remove_tags_from_stream(
+                stream_name='test-stream', tag_keys=[long_key], region_name='us-west-2'
+            )
+
+
+# ==============================================================================
+#                       start_stream_encryption Additional Tests
+# ==============================================================================
+
+
+def test_start_stream_encryption_invalid_stream_name_type(mock_kinesis_client):
+    """Test start_stream_encryption with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            start_stream_encryption(stream_name=123, region_name='us-west-2')
+
+
+def test_start_stream_encryption_invalid_stream_name_length(mock_kinesis_client):
+    """Test start_stream_encryption with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            start_stream_encryption(stream_name=long_name, region_name='us-west-2')
+
+
+def test_start_stream_encryption_invalid_key_id_type(mock_kinesis_client):
+    """Test start_stream_encryption with invalid key_id type."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='key_id must be a string'):
+            start_stream_encryption(stream_name='test-stream', key_id=123, region_name='us-west-2')
+
+
+def test_start_stream_encryption_without_key_id(mock_kinesis_client):
+    """Test start_stream_encryption without key_id."""
+    from awslabs.kinesis_mcp_server.server import start_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_kinesis_client.start_stream_encryption = MagicMock(return_value={})
+
+        start_stream_encryption(
+            stream_name='test-stream', encryption_type='KMS', region_name='us-west-2'
+        )
+
+        mock_kinesis_client.start_stream_encryption.assert_called_with(
+            StreamName='test-stream', EncryptionType='KMS'
+        )
+
+
+# ==============================================================================
+#                       stop_stream_encryption Additional Tests
+# ==============================================================================
+
+
+def test_stop_stream_encryption_invalid_stream_name_type(mock_kinesis_client):
+    """Test stop_stream_encryption with invalid stream name type."""
+    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        with pytest.raises(TypeError, match='stream_name must be a string'):
+            stop_stream_encryption(stream_name=123, region_name='us-west-2')
+
+
+def test_stop_stream_encryption_invalid_stream_name_length(mock_kinesis_client):
+    """Test stop_stream_encryption with invalid stream name length."""
+    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
+        with pytest.raises(ValueError, match='stream_name length must be between'):
+            stop_stream_encryption(stream_name=long_name, region_name='us-west-2')

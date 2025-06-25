@@ -22,6 +22,7 @@ DEFAULT_REGION = 'us-west-2'
 DEFAULT_SHARD_COUNT = 1
 DEFAULT_STREAM_LIMIT = 100
 DEFAULT_GET_RECORDS_LIMIT = 10000
+DEFAULT_ENCRYPTION_TYPE = 'KMS'
 
 # =============================================================================
 # Stream Configuration
