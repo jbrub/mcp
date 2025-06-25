@@ -65,6 +65,20 @@ Describes the stream summary.
 **Returns:**
 Dictionary containing detailed information about the stream
 
+### get_shard_iterator
+
+Gets an iterator for a specific shard in a Kinesis data stream. The shard iterator is used to read records from the shard.
+
+**Parameters:**
+- `shard_id` (required): The ID of the shard to get an iterator for
+- `shard_iterator_type` (required): Determines how the shard iterator is used to start reading records from the shard. Valid values: AT_SEQUENCE_NUMBER, AFTER_SEQUENCE_NUMBER, TRIM_HORIZON, LATEST, AT_TIMESTAMP
+- `stream_name` or `stream_arn` (optional): Name or ARN of the stream containing the shard
+- `starting_sequence_number` (optional): Required when shard_iterator_type is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
+- `timestamp` (optional): Required when shard_iterator_type is AT_TIMESTAMP
+
+**Returns:**
+Dictionary containing the shard iterator that can be used with get_records
+
 
 ## Instructions
 
