@@ -103,7 +103,9 @@ def mock_kinesis_client():
         yield client
 
 
-"""put_records Error Tests"""
+# ==============================================================================
+#                       put_records Error Tests
+# ==============================================================================
 
 
 def test_put_records_missing_records(mock_kinesis_client):
@@ -217,7 +219,9 @@ def test_put_records_invalid_stream_name_type(mock_kinesis_client):
             put_records(stream_name=123, records=records, region_name='us-west-2')
 
 
-"""get_records Error Tests"""
+# ==============================================================================
+#                           get_records Error Tests
+# ==============================================================================
 
 
 def test_get_records_missing_shard_iterator(mock_kinesis_client):
@@ -309,7 +313,9 @@ def test_get_records_invalid_stream_arn_length(mock_kinesis_client):
             )
 
 
-"""create_stream Error Tests"""
+# ==============================================================================
+#                       create_stream Error Tests
+# ==============================================================================
 
 
 def test_create_stream_missing_stream_name(mock_kinesis_client):
@@ -443,7 +449,9 @@ def test_create_stream_invalid_stream_mode_details_type(mock_kinesis_client):
             )
 
 
-"""list_streams Error Tests"""
+# ==============================================================================
+#                       list_streams Error Tests
+# ==============================================================================
 
 
 def test_list_streams_invalid_limit(mock_kinesis_client):
@@ -493,7 +501,9 @@ def test_list_streams_invalid_next_token_type(mock_kinesis_client):
             list_streams(next_token=123, region_name='us-west-2')
 
 
-"""describe_stream_summary Error Tests"""
+# ==============================================================================
+#                   describe_stream_summary Error Tests
+# ==============================================================================
 
 
 def test_describe_stream_summary_missing_identifiers(mock_kinesis_client):
@@ -573,7 +583,9 @@ def test_describe_stream_summary_invalid_stream_arn_length(mock_kinesis_client):
             describe_stream_summary(stream_arn=long_arn, region_name='us-west-2')
 
 
-"""get_shard_iterator Tests"""
+# ==============================================================================
+#                       get_shard_iterator Error Tests
+# ==============================================================================
 
 
 def test_get_shard_iterator_success_with_stream_name(mock_kinesis_client):

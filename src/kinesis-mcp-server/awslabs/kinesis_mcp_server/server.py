@@ -76,7 +76,7 @@ mcp = FastMCP(
 
     This helps ensure clarity and prevents region-related issues when working with AWS resources.
     """,
-    version='alpha',
+    version='1.0',
 )
 
 
