@@ -35,6 +35,19 @@ def handle_exceptions(func: Callable) -> Callable:
     return wrapper
 
 
+# TODO: Need to fix this
+def is_destructive_action_allowed():
+    """Check if destructive actions are allowed based on environment variable.
+
+    Returns:
+        tuple: (allowed, error_message) where allowed is a boolean and error_message is None if allowed
+    """
+    confirm_destruction = os.environ.get('CONFIRM_DESTRUCTIVE_ACTION', 'false').lower()
+    if confirm_destruction in ('true', '1', 'yes'):
+        return False, {'error': 'Mutation not allowed: CONFIRM_DESTRUCTIVE_ACTION is set to true.'}
+    return True, None
+
+
 class PutRecordsInput(TypedDict, total=False):
     """Input parameters for the put_records operation.
 
@@ -119,83 +132,77 @@ class GetShardIteratorInput(TypedDict, total=False):
 
     ShardId: str  # Required
     ShardIteratorType: str  # Required - Valid values: AT_SEQUENCE_NUMBER | AFTER_SEQUENCE_NUMBER | TRIM_HORIZON | LATEST | AT_TIMESTAMP
-    StreamName: str  # Optional
-    StreamARN: str  # Optional
+    StreamName: str  # Optional # Either StreamName or StreamARN required
+    StreamARN: str  # Optional # Either StreamName or StreamARN required
     StartingSequenceNumber: str  # Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
     Timestamp: Union[datetime, str]  # Optional - Required if ShardIteratorType is AT_TIMESTAMP
-
-
-class UpdateStreamModeInput(TypedDict, total=False):
-    """Input parameters for the update_stream_mode operation.
-
-    Attributes:
-        StreamName: Name of the stream to update
-        StreamModeDetails: Details about the new stream mode
-    """
-
-    StreamName: str  # Required
-    StreamModeDetails: Dict[str, str]  # Required - Valid values: PROVISIONED | ON_DEMAND
-
-
-class UpdateShardCountInput(TypedDict, total=False):
-    """Input parameters for the update_shard_count operation.
-
-    Attributes:
-        StreamName: Name of the stream to update
-        TargetShardCount: New target shard count
-        ScalingType: Type of scaling operation
-    """
-
-    StreamName: str  # Required
-    TargetShardCount: int  # Required - New target shard count
-    ScalingType: str  # Required - Valid values: UNIFORM_SCALING | STANDARD_SCALING
 
 
 class AddTagsToStreamInput(TypedDict, total=False):
     """Input parameters for the add_tags_to_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to add tags to
         Tags: Tags to add to the stream
+        StreamName: Name of the stream to add tags to
+        StreamARN: ARN of the stream to add tags to
     """
 
-    StreamName: str  # Required
-    Tags: Dict[str, str]  # Required
+    Tags: Dict[str, str]  # Required - Tags to add
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
 
 
-class RemoveTagsFromStreamInput(TypedDict, total=False):
-    """Input parameters for the remove_tags_from_stream operation.
+class DescribeStreamInput(TypedDict, total=False):
+    """Input parameters for the describe_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to remove tags from
-        TagKeys: List of tag keys to remove
+        StreamName: Name of the stream to describe
+        StreamARN: ARN of the stream to describe
+        Limit: Maximum number of shards to return
+        ExclusiveStartShardId: Shard ID to start listing from
     """
 
-    StreamName: str  # Required
-    TagKeys: List[str]  # Required - List of tag keys to remove
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    Limit: int  # Optional - Default 10000
+    ExclusiveStartShardId: str  # Optional
 
 
-class StartStreamEncryptionInput(TypedDict, total=False):
-    """Input parameters for the start_stream_encryption operation.
+class DescribeStreamConsumerInput(TypedDict, total=False):
+    """Input parameters for the describe_stream_consumer operation.
 
     Attributes:
-        StreamName: Name of the stream to encrypt
-        EncryptionType: Type of encryption to use
-        KeyId: ID of the KMS key to use for encryption
+        ConsumerARN: ARN of the consumer to describe
+        StreamARN: ARN of the stream the consumer belongs to
+        ConsumerName: Name of the consumer to describe
     """
 
-    StreamName: str  # Required
-    EncryptionType: str  # Required - Valid values: KMS | NONE
-    KeyId: str  # Required - KMS key ID or alias
+    StreamARN: str  # Required - The stream the consumer belongs to
+    ConsumerARN: str  # Optional - Either ConsumerARN or ConsumerName required
+    ConsumerName: str  # Optional - Either ConsumerARN or ConsumerName required
 
 
-class StopStreamEncryptionInput(TypedDict, total=False):
-    """Input parameters for the stop_stream_encryption operation.
+class ListStreamConsumersInput(TypedDict, total=False):
+    """Input parameters for the list_stream_consumers operation.
 
     Attributes:
-        StreamName: Name of the stream to stop encryption on
-        EncryptionType: Type of encryption to stop
+        StreamARN: ARN of the stream to list consumers for
+        NextToken: Token for pagination
+        StreamCreationTimestamp: Timestamp to filter consumers created after this time
+        MaxResults: Maximum number of consumers to return
     """
 
-    StreamName: str  # Required
-    EncryptionType: str  # Required - Valid values: KMS | NONE
+    StreamARN: str  # Required - The stream to list consumers for
+    NextToken: str  # Optional
+    StreamCreationTimestamp: Union[datetime, str]  # Optional
+    MaxResults: int  # Optional - Default 100
+
+
+class ListTagsForResourceInput(TypedDict, total=False):
+    """Input parameters for the list_tags_for_resource operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to list tags for
+    """
+
+    ResourceARN: str  # Required - The ARN of the resource to list tags for

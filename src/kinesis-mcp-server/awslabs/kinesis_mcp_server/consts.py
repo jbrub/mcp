@@ -23,6 +23,7 @@ DEFAULT_SHARD_COUNT = 1
 DEFAULT_STREAM_LIMIT = 100
 DEFAULT_GET_RECORDS_LIMIT = 10000
 DEFAULT_ENCRYPTION_TYPE = 'KMS'
+DEFUALT_MAX_RESULTS = 100
 
 # =============================================================================
 # Stream Configuration
@@ -55,6 +56,10 @@ MAX_SHARDS_PER_STREAM = 500
 MIN_SHARDS_PER_STREAM = 1
 MAX_SHARD_ID_LENGTH = 128
 MIN_SHARD_ID_LENGTH = 1
+
+# ListStreamConsumers Limits
+MAX_RESULTS_PER_STREAM = 1000
+MIN_RESULTS_PER_STREAM = 1
 
 # =============================================================================
 # Validation Limits - Records
@@ -94,3 +99,12 @@ MAX_EXCLUSIVE_START_STREAM_NAME_LENGTH = 128
 MIN_EXCLUSIVE_START_STREAM_NAME_LENGTH = 1
 MAX_NEXT_TOKEN_LENGTH = 1048576
 MIN_NEXT_TOKEN_LENGTH = 1
+
+
+# =============================================================================
+# Validation Limits - Target Shard Count
+# =============================================================================
+
+MIN_TARGET_SHARD_COUNT = 1
+MAX_TARGET_SHARD_COUNT = 10000
+VALID_SCALING_TYPES = {'UNIFORM_SCALING'}

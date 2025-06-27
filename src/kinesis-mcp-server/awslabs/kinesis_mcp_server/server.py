@@ -14,35 +14,36 @@
 
 """awslabs kinesis MCP Server implementation."""
 
+# All imports consolidated at the top
 import boto3
 import os
 import re
 from awslabs.kinesis_mcp_server.common import (
     AddTagsToStreamInput,
     CreateStreamInput,
+    DescribeStreamConsumerInput,
+    DescribeStreamInput,
     DescribeStreamSummaryInput,
     GetRecordsInput,
     GetShardIteratorInput,
+    ListStreamConsumersInput,
     ListStreamsInput,
+    ListTagsForResourceInput,
     PutRecordsInput,
-    RemoveTagsFromStreamInput,
-    StartStreamEncryptionInput,
-    StopStreamEncryptionInput,
-    UpdateShardCountInput,
-    UpdateStreamModeInput,
     handle_exceptions,
 )
 from awslabs.kinesis_mcp_server.consts import (
-    DEFAULT_ENCRYPTION_TYPE,
     DEFAULT_GET_RECORDS_LIMIT,
     # Defaults
     DEFAULT_REGION,
     DEFAULT_SHARD_COUNT,
     DEFAULT_STREAM_LIMIT,
+    DEFUALT_MAX_RESULTS,
     MAX_LENGTH_SHARD_ITERATOR,
     MAX_LIMIT,
     # Function-specific constants
     MAX_RECORDS,
+    MAX_RESULTS_PER_STREAM,
     MAX_SHARD_ID_LENGTH,
     MAX_SHARDS_PER_STREAM,
     MAX_STREAM_ARN_LENGTH,
@@ -54,12 +55,12 @@ from awslabs.kinesis_mcp_server.consts import (
     MIN_LENGTH_SHARD_ITERATOR,
     MIN_LIMIT,
     MIN_RECORDS,
+    MIN_RESULTS_PER_STREAM,
     MIN_SHARD_ID_LENGTH,
     MIN_SHARDS_PER_STREAM,
     MIN_STREAM_ARN_LENGTH,
     MIN_STREAM_NAME_LENGTH,
     MIN_TAG_KEY_LENGTH,
-    # Stream modes
     STREAM_MODE_ON_DEMAND,
     STREAM_MODE_PROVISIONED,
     VALID_SHARD_ITERATOR_TYPES,
@@ -142,6 +143,11 @@ def put_records(
     if stream_name is not None:
         if not isinstance(stream_name, str):
             raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
 
         if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
             raise ValueError(
@@ -414,10 +420,7 @@ def describe_stream_summary(
     Returns:
         Dictionary containing stream summary details
     """
-    # Initialize parameters
-    params: DescribeStreamSummaryInput = {}
-
-    # Validate that at least one identifier is provided
+    # Validate stream identification
     if stream_name is None and stream_arn is None:
         raise ValueError('Either stream_name or stream_arn must be provided')
 
@@ -426,12 +429,15 @@ def describe_stream_summary(
         if not isinstance(stream_name, str):
             raise TypeError('stream_name must be a string')
 
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
         if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
             raise ValueError(
                 f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
             )
-
-        params['StreamName'] = stream_name
 
     # Validate stream_arn if provided
     if stream_arn is not None:
@@ -443,7 +449,8 @@ def describe_stream_summary(
                 f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
             )
 
-        params['StreamARN'] = stream_arn
+    # Initialize parameters
+    params: DescribeStreamSummaryInput = {}
 
     # Call Kinesis API to describe the stream summary
     kinesis = get_kinesis_client(region_name)
@@ -496,10 +503,19 @@ def get_shard_iterator(
     if shard_iterator_type not in VALID_SHARD_ITERATOR_TYPES:
         raise ValueError(f'shard_iterator_type must be one of {VALID_SHARD_ITERATOR_TYPES}')
 
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
+
     # Validate stream_name if provided
     if stream_name is not None:
         if not isinstance(stream_name, str):
             raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
 
         if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
             raise ValueError(
@@ -559,147 +575,38 @@ def get_shard_iterator(
     return response
 
 
-@mcp.tool('update_stream_mode')
-@handle_exceptions
-def update_stream_mode(
-    stream_name: str,
-    stream_mode_details: Dict[str, str],
-    region_name: str = DEFAULT_REGION,
-) -> Dict[str, Any]:
-    """Updates the mode of an existing Kinesis data stream.
-
-    Args:
-        stream_name: Name of the stream to update
-        stream_mode_details: Details about the new stream mode (e.g., {"StreamMode": "PROVISIONED"})
-        region_name: Region to perform API operation (default: 'us-west-2')
-
-    Returns:
-        Dictionary containing the updated stream details
-    """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
-
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
-
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
-        raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
-        )
-
-    # Validate stream_mode_details
-    if not isinstance(stream_mode_details, dict):
-        raise TypeError('stream_mode_details must be a dictionary')
-
-    if 'StreamMode' not in stream_mode_details:
-        raise ValueError('stream_mode_details must contain "StreamMode" key')
-
-    if stream_mode_details['StreamMode'] not in [STREAM_MODE_ON_DEMAND, STREAM_MODE_PROVISIONED]:
-        raise ValueError(f'Invalid StreamMode: {stream_mode_details["StreamMode"]}')
-
-    # Build parameters
-    params: UpdateStreamModeInput = {
-        'StreamName': stream_name,
-        'StreamModeDetails': stream_mode_details,
-    }
-
-    # Call Kinesis API to update the stream mode
-    kinesis = get_kinesis_client(region_name)
-    response = kinesis.update_stream_mode(**params)
-
-    return response
-
-
-@mcp.tool('update_shard_count')
-@handle_exceptions
-def update_shard_count(
-    stream_name: str,
-    target_shard_count: int,
-    scaling_type: str,
-    region_name: str = DEFAULT_REGION,
-) -> Dict[str, Any]:
-    """Updates the shard count of an existing Kinesis data stream.
-
-    Args:
-        stream_name: Name of the stream to update
-        target_shard_count: New target shard count
-        scaling_type: Type of scaling operation (e.g., "UNIFORM_SCALING")
-        region_name: Region to perform API operation (default: 'us-west-2')
-
-    Returns:
-        Dictionary containing the updated stream details
-    """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
-
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
-
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
-        raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
-        )
-
-    # Validate target_shard_count
-    if not isinstance(target_shard_count, int):
-        raise TypeError('target_shard_count must be an integer')
-
-    if target_shard_count < 1:
-        raise ValueError('target_shard_count must be greater than 0')
-
-    # Validate scaling_type
-    if not isinstance(scaling_type, str):
-        raise TypeError('scaling_type must be a string')
-
-    if scaling_type not in ['UNIFORM_SCALING', 'STANDARD_SCALING']:
-        raise ValueError(f'Invalid scaling_type: {scaling_type}')
-
-    # Build parameters
-    params: UpdateShardCountInput = {
-        'StreamName': stream_name,
-        'TargetShardCount': target_shard_count,
-        'ScalingType': scaling_type,
-    }
-
-    # Call Kinesis API to update the shard count
-    kinesis = get_kinesis_client(region_name)
-    response = kinesis.update_shard_count(**params)
-
-    return response
+# =========================================================
+#                   Stretch Goal APIs
+# =========================================================
 
 
 @mcp.tool('add_tags_to_stream')
 @handle_exceptions
 def add_tags_to_stream(
-    stream_name: str,
     tags: Dict[str, str],
+    stream_name: str = None,
+    stream_arn: str = None,
     region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
     """Adds tags to a Kinesis data stream.
 
     Args:
         stream_name: Name of the stream to add tags to
-        tags: Tags to add to the stream
+        stream_arn: ARN of the stream to add tags to
+        tags: Tags to associate with the stream
         region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
-        Dictionary containing the updated stream details
+        Dictionary containing the response from the Kinesis API
     """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
-
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
-
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
-        raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
-        )
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
 
     # Validate tags
+    if not tags:
+        raise ValueError('tags is required')
+
     if not isinstance(tags, dict):
         raise TypeError('tags must be a dictionary')
 
@@ -720,10 +627,14 @@ def add_tags_to_stream(
             raise ValueError(f'Tag value length cannot exceed {MAX_TAG_VALUE_LENGTH} characters')
 
     # Build parameters
-    params: AddTagsToStreamInput = {
-        'StreamName': stream_name,
-        'Tags': tags,
-    }
+    params: AddTagsToStreamInput = {'Tags': tags}
+
+    # Add StreamName or StreamARN
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
 
     # Call Kinesis API to add tags to the stream
     kinesis = get_kinesis_client(region_name)
@@ -732,165 +643,258 @@ def add_tags_to_stream(
     return response
 
 
-@mcp.tool('remove_tags_from_stream')
+@mcp.tool('describe_stream')  # TODO: Works - need to add testing
 @handle_exceptions
-def remove_tags_from_stream(
-    stream_name: str,
-    tag_keys: List[str],
+def describe_stream(
+    stream_name: str = None,
+    stream_arn: str = None,
+    limit: int = DEFAULT_STREAM_LIMIT,
+    exclusive_start_shard_id: str = None,
     region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
-    """Removes tags from a Kinesis data stream.
+    """Describes the stream.
 
     Args:
-        stream_name: Name of the stream to remove tags from
-        tag_keys: List of tag keys to remove
+        stream_name: Name of the stream to describe
+        stream_arn: ARN of the stream to describe
+        limit: Maximum number of shards to return
+        exclusive_start_shard_id: Shard ID to start listing from
         region_name: Region to perform API operation (default: 'us-west-2')
 
     Returns:
-        Dictionary containing the updated stream details
+        Dictionary containing stream details
     """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
 
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
 
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Validate limit if provided
+    if limit is not None:
+        if not isinstance(limit, int):
+            raise TypeError('limit must be an integer')
+
+        if limit < MIN_LIMIT or limit > MAX_LIMIT:
+            raise ValueError(f'limit must be between {MIN_LIMIT} and {MAX_LIMIT}')
+
+    # Validate exclusive_start_shard_id if provided
+    if exclusive_start_shard_id is not None:
+        if not isinstance(exclusive_start_shard_id, str):
+            raise TypeError('exclusive_start_shard_id must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9_.-]+$', exclusive_start_shard_id):
+            raise ValueError(
+                'exclusive_start_shard_id can only contain alphanumeric characters, underscores, periods, and hyphens'
+            )
+        if (
+            len(exclusive_start_shard_id) < MIN_SHARD_ID_LENGTH
+            or len(exclusive_start_shard_id) > MAX_SHARD_ID_LENGTH
+        ):
+            raise ValueError(
+                f'exclusive_start_shard_id length must be between {MIN_SHARD_ID_LENGTH} and {MAX_SHARD_ID_LENGTH} characters'
+            )
+
+    # Initialize parameters
+    params: DescribeStreamInput = {}
+
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+    if limit is not None:
+        params['Limit'] = limit
+    if exclusive_start_shard_id is not None:
+        params['ExclusiveStartShardId'] = exclusive_start_shard_id
+
+    # Call Kinesis API to describe the stream
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.describe_stream(**params)
+
+    # Return Stream Details
+    return response
+
+
+@mcp.tool('describe_stream_consumer')
+@handle_exceptions
+def describe_stream_consumer(
+    consumer_name: str = None,
+    stream_arn: str = None,
+    consumer_arn: str = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Describes a Kinesis data stream consumer.
+
+    Args:
+        consumer_name: Name of the consumer to describe
+        stream_arn: ARN of the stream the consumer is associated with
+        consumer_arn: ARN of the consumer to describe
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the consumer details
+    """
+    # Validate consumer identification
+    if not consumer_name and not stream_arn:
+        raise ValueError('Either consumer_name or stream_arn must be provided')
+
+    # Validate consumer_name
+    if not consumer_name:
+        raise ValueError('consumer_name is required')
+
+    if not isinstance(consumer_name, str):
+        raise TypeError('consumer_name must be a string')
+
+    # Validate stream_arn
+    if not stream_arn:
+        raise ValueError('stream_arn is required')
+
+    if not isinstance(stream_arn, str):
+        raise TypeError('stream_arn must be a string')
+
+    if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
         raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
         )
 
-    # Validate tag_keys
-    if not isinstance(tag_keys, list):
-        raise TypeError('tag_keys must be a list')
+    # Build parameters
+    params: DescribeStreamConsumerInput = {}
 
-    if len(tag_keys) == 0:
-        raise ValueError('tag_keys cannot be empty')
+    if consumer_name is not None:
+        params['ConsumerName'] = consumer_name
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+    if consumer_arn is not None:
+        params['ConsumerARN'] = consumer_arn
 
-    if len(tag_keys) > MAX_TAGS_COUNT:
-        raise ValueError(f'Number of tag keys cannot exceed {MAX_TAGS_COUNT}')
+    # Call Kinesis API to describe the stream consumer
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.describe_stream_consumer(**params)
 
-    for key in tag_keys:
-        if not isinstance(key, str):
-            raise TypeError('Tag keys must be strings')
+    return response
 
-        if len(key) < MIN_TAG_KEY_LENGTH or len(key) > MAX_TAG_KEY_LENGTH:
+
+@mcp.tool('list_stream_consumers')
+@handle_exceptions
+def list_stream_consumers(
+    stream_arn: str,
+    next_token: str = None,
+    stream_creation_time_stamp: Union[datetime, str] = None,
+    max_results: int = DEFUALT_MAX_RESULTS,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Lists the consumers of a Kinesis data stream.
+
+    Args:
+        stream_arn: ARN of the stream to list consumers for
+        next_token: Token for pagination (default: None)
+        stream_creation_time_stamp: Timestamp to filter consumers created after this time
+        max_results: Maximum number of results to return (default: 100)
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the list of consumers and pagination details
+    """
+    # Validate stream_arn
+    if not stream_arn:
+        raise ValueError('stream_arn is required')
+
+    if not isinstance(stream_arn, str):
+        raise TypeError('stream_arn must be a string')
+
+    if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+        raise ValueError(
+            f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+        )
+
+    # Validate next_token if provided
+    if next_token is not None:
+        if not isinstance(next_token, str):
+            raise TypeError('next_token must be a string')
+
+    # Validate max_results
+    if max_results is not None:
+        if not isinstance(max_results, int):
+            raise TypeError('max_results must be an integer')
+
+        if max_results < MIN_RESULTS_PER_STREAM or max_results > MAX_RESULTS_PER_STREAM:
             raise ValueError(
-                f'Tag key length must be between {MIN_TAG_KEY_LENGTH} and {MAX_TAG_KEY_LENGTH} characters'
+                f'max_results must be between {MIN_RESULTS_PER_STREAM} and {MAX_RESULTS_PER_STREAM}'
             )
 
     # Build parameters
-    params: RemoveTagsFromStreamInput = {
-        'StreamName': stream_name,
-        'TagKeys': tag_keys,
-    }
+    params: ListStreamConsumersInput = {'StreamARN': stream_arn}
 
-    # Call Kinesis API to remove tags from the stream
+    if next_token is not None:
+        params['NextToken'] = next_token
+
+    if stream_creation_time_stamp is not None:
+        params['StreamCreationTimestamp'] = stream_creation_time_stamp
+
+    if max_results is not None:
+        params['MaxResults'] = max_results
+
+    # Call Kinesis API to list the stream consumers
     kinesis = get_kinesis_client(region_name)
-    response = kinesis.remove_tags_from_stream(**params)
+    response = kinesis.list_stream_consumers(**params)
 
     return response
 
 
-@mcp.tool('start_stream_encryption')
+@mcp.tool('list_tags_for_resource')
 @handle_exceptions
-def start_stream_encryption(
-    stream_name: str,
-    encryption_type: str = DEFAULT_ENCRYPTION_TYPE,
-    key_id: str = None,
-    region_name: str = DEFAULT_REGION,
+def list_tags_for_resource(
+    resource_arn: str,
 ) -> Dict[str, Any]:
-    """Starts encryption on a Kinesis data stream.
+    """Lists the tags associated with a Kinesis data stream.
 
     Args:
-        stream_name: Name of the stream to encrypt
-        encryption_type: Type of encryption to use (default: 'KMS')
-        key_id: ID of the KMS key to use for encryption (optional)
-        region_name: Region to perform API operation (default: 'us-west-2')
+        resource_arn: ARN of the resource to list tags for
 
     Returns:
-        Dictionary containing the updated stream details
+        Dictionary containing the tags associated with the stream
     """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
+    # Validate stream_arn
+    if not resource_arn:
+        raise ValueError('stream_arn is required')
 
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
+    if not isinstance(resource_arn, str):
+        raise TypeError('resource_arn must be a string')
 
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+    if len(resource_arn) < MIN_STREAM_ARN_LENGTH or len(resource_arn) > MAX_STREAM_ARN_LENGTH:
         raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
         )
 
-    # Validate encryption_type
-    if encryption_type not in ['KMS', 'NONE']:
-        raise ValueError(f'Invalid encryption_type: {encryption_type}')
-
-    # Validate key_id if provided
-    if key_id is not None:
-        if not isinstance(key_id, str):
-            raise TypeError('key_id must be a string')
-
     # Build parameters
-    params: StartStreamEncryptionInput = {
-        'StreamName': stream_name,
-        'EncryptionType': encryption_type,
-    }
+    params: ListTagsForResourceInput = {'ResourceARN': resource_arn}
 
-    if key_id is not None:
-        params['KeyId'] = key_id
-
-    # Call Kinesis API to start stream encryption
-    kinesis = get_kinesis_client(region_name)
-    response = kinesis.start_stream_encryption(**params)
-
-    return response
-
-
-@mcp.tool('stop_stream_encryption')
-@handle_exceptions
-def stop_stream_encryption(
-    stream_name: str,
-    encryption_type: str = DEFAULT_ENCRYPTION_TYPE,
-    region_name: str = DEFAULT_REGION,
-) -> Dict[str, Any]:
-    """Stops encryption on a Kinesis data stream.
-
-    Args:
-        stream_name: Name of the stream to stop encryption on
-        encryption_type: Type of encryption to stop (default: 'KMS')
-        region_name: Region to perform API operation (default: 'us-west-2')
-
-    Returns:
-        Dictionary containing the updated stream details
-    """
-    # Validate stream_name
-    if not stream_name:
-        raise ValueError('stream_name is required')
-
-    if not isinstance(stream_name, str):
-        raise TypeError('stream_name must be a string')
-
-    if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
-        raise ValueError(
-            f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
-        )
-
-    # Validate encryption_type
-    if encryption_type not in ['KMS', 'NONE']:
-        raise ValueError(f'Invalid encryption_type: {encryption_type}')
-
-    # Build parameters
-    params: StopStreamEncryptionInput = {
-        'StreamName': stream_name,
-        'EncryptionType': encryption_type,
-    }
-
-    # Call Kinesis API to stop stream encryption
-    kinesis = get_kinesis_client(region_name)
-    response = kinesis.stop_stream_encryption(**params)
+    # Call Kinesis API to list the tags for the stream
+    kinesis = get_kinesis_client()
+    response = kinesis.list_tags_for_resource(**params)
 
     return response
 
