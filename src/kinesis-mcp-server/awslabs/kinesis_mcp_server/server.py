@@ -24,16 +24,24 @@ from awslabs.kinesis_mcp_server.common import (
     DescribeStreamConsumerInput,
     DescribeStreamInput,
     DescribeStreamSummaryInput,
+    EnableEnhancedMonitoringInput,
     GetRecordsInput,
+    GetResourcePolicyInput,
     GetShardIteratorInput,
+    IncreaseStreamRetentionPeriodInput,
+    ListShardsInput,
     ListStreamConsumersInput,
     ListStreamsInput,
     ListTagsForResourceInput,
+    ListTagsForStreamInput,
     PutRecordsInput,
+    PutResourcePolicyInput,
+    TagResourceInput,
     handle_exceptions,
 )
 from awslabs.kinesis_mcp_server.consts import (
     DEFAULT_GET_RECORDS_LIMIT,
+    DEFAULT_MAX_RESULTS,
     # Defaults
     DEFAULT_REGION,
     DEFAULT_SHARD_COUNT,
@@ -41,10 +49,10 @@ from awslabs.kinesis_mcp_server.consts import (
     DEFUALT_MAX_RESULTS,
     MAX_LENGTH_SHARD_ITERATOR,
     MAX_LIMIT,
-    # Function-specific constants
     MAX_RECORDS,
     MAX_RESULTS_PER_STREAM,
     MAX_SHARD_ID_LENGTH,
+    MAX_SHARD_LEVEL_METRICS,
     MAX_SHARDS_PER_STREAM,
     MAX_STREAM_ARN_LENGTH,
     # Shared constants
@@ -57,6 +65,7 @@ from awslabs.kinesis_mcp_server.consts import (
     MIN_RECORDS,
     MIN_RESULTS_PER_STREAM,
     MIN_SHARD_ID_LENGTH,
+    MIN_SHARD_LEVEL_METRICS,
     MIN_SHARDS_PER_STREAM,
     MIN_STREAM_ARN_LENGTH,
     MIN_STREAM_NAME_LENGTH,
@@ -64,6 +73,7 @@ from awslabs.kinesis_mcp_server.consts import (
     STREAM_MODE_ON_DEMAND,
     STREAM_MODE_PROVISIONED,
     VALID_SHARD_ITERATOR_TYPES,
+    VALID_SHARD_LEVEL_METRICS,
 )
 from botocore.config import Config
 from datetime import datetime
@@ -895,6 +905,519 @@ def list_tags_for_resource(
     # Call Kinesis API to list the tags for the stream
     kinesis = get_kinesis_client()
     response = kinesis.list_tags_for_resource(**params)
+
+    return response
+
+
+@mcp.tool('describe_limits')
+@handle_exceptions
+def describe_limits(
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Describes the limits for a Kinesis data stream in the specified region.
+
+    Args:
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the limits for the Kinesis data stream
+    """
+    # Build parameters
+    params = {}
+
+    # Call Kinesis API to describe the limits
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.describe_limits(**params)
+
+    return response
+
+
+@mcp.tool('enable_enhanced_monitoring')
+@handle_exceptions
+def enable_enhanced_monitoring(
+    shard_level_metrics: List[str],
+    stream_name: str = None,
+    stream_arn: str = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Enables enhanced monitoring for a Kinesis data stream.
+
+    Args:
+        shard_level_metrics: List of metrics to enable for enhanced monitoring
+        stream_name: Name of the stream to enable monitoring for
+        stream_arn: ARN of the stream to enable monitoring for
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the response from the Kinesis API
+    """
+    # Validate shard_level_metrics
+    if not shard_level_metrics:
+        raise ValueError('shard_level_metrics is required')
+
+    if not isinstance(shard_level_metrics, list):
+        raise TypeError('shard_level_metrics must be a list')
+
+    if (
+        len(shard_level_metrics) < MIN_SHARD_LEVEL_METRICS
+        or len(shard_level_metrics) > MAX_SHARD_LEVEL_METRICS
+    ):
+        raise ValueError(
+            f'Number of shard_level_metrics must be between {MIN_SHARD_LEVEL_METRICS} and {MAX_SHARD_LEVEL_METRICS}'
+        )
+    for _ in shard_level_metrics:
+        if _ not in VALID_SHARD_LEVEL_METRICS:
+            raise ValueError(
+                f'Invalid metric in shard_level_metrics: {_}. Must be one of {VALID_SHARD_LEVEL_METRICS}'
+            )
+
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
+
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Build parameters
+    params: EnableEnhancedMonitoringInput = {'ShardLevelMetrics': shard_level_metrics}
+
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+
+    # Call Kinesis API to enable enhanced monitoring
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.enable_enhanced_monitoring(**params)
+
+    return response
+
+
+@mcp.tool('get_resource_policy')
+@handle_exceptions
+def get_resource_policy(
+    resource_arn: str,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Retrieves the resource policy for a Kinesis data stream.
+
+    Args:
+        resource_arn: ARN of the resource to retrieve the policy for
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the resource policy
+    """
+    # Validate resource_arn
+    if not resource_arn:
+        raise ValueError('resource_arn is required')
+
+    if not isinstance(resource_arn, str):
+        raise TypeError('resource_arn must be a string')
+
+    if len(resource_arn) < MIN_STREAM_ARN_LENGTH or len(resource_arn) > MAX_STREAM_ARN_LENGTH:
+        raise ValueError(
+            f'resource_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+        )
+
+    # Build parameters
+    params: GetResourcePolicyInput = {'ResourceARN': resource_arn}
+
+    # Call Kinesis API to get the resource policy
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.get_resource_policy(**params)
+
+    return response
+
+
+@mcp.tool('increase_stream_retention_period')
+@handle_exceptions
+def increase_stream_retention_period(
+    retention_period_hours: int,
+    stream_name: str = None,
+    stream_arn: str = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Increases the retention period of a Kinesis data stream.
+
+    Args:
+        retention_period_hours: New retention period in hours (must be between 24 and 8760)
+        stream_name: Name of the stream to increase retention for
+        stream_arn: ARN of the stream to increase retention for
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the response from the Kinesis API
+    """
+    # Validate retention_period_hours
+    if not isinstance(retention_period_hours, int):
+        raise TypeError('retention_period_hours must be an integer')
+
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
+
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Get current retention period to ensure we're only increasing it
+    kinesis = get_kinesis_client(region_name)
+    describe_params = {}
+    if stream_name is not None:
+        describe_params['StreamName'] = stream_name
+    if stream_arn is not None:
+        describe_params['StreamARN'] = stream_arn
+    describe_response = kinesis.describe_stream(**describe_params)
+    current_retention_period = describe_response['StreamDescription']['RetentionPeriodHours']
+
+    # Validate retention_period_hours
+    if retention_period_hours <= current_retention_period:
+        raise ValueError(
+            f'retention_period_hours must be greater than the current retention period of {current_retention_period} hours'
+        )
+
+    # Build parameters
+    params: IncreaseStreamRetentionPeriodInput = {
+        'RetentionPeriodHours': retention_period_hours,
+    }
+
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+
+    # Call Kinesis API to increase the stream retention period
+    response = kinesis.increase_stream_retention_period(**params)
+
+    return response
+
+
+@mcp.tool('list_shards')
+@handle_exceptions
+def list_shards(
+    exclusive_start_shard_id: str = None,
+    stream_name: str = None,
+    stream_arn: str = None,
+    next_token: str = None,
+    max_results: int = DEFAULT_MAX_RESULTS,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Lists the shards in a Kinesis data stream.
+
+    Args:
+        exclusive_start_shard_id: Shard ID to start listing from (default: None)
+        stream_name: Name of the stream to list shards for
+        stream_arn: ARN of the stream to list shards for
+        next_token: Token for pagination (default: None)
+        max_results: Maximum number of shards to return (default: 100)
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the list of shards and pagination details
+    """
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
+
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Validate exclusive_start_shard_id if provided
+    if exclusive_start_shard_id is not None:
+        if not isinstance(exclusive_start_shard_id, str):
+            raise TypeError('exclusive_start_shard_id must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9_.-]+$', exclusive_start_shard_id):
+            raise ValueError(
+                'exclusive_start_shard_id can only contain alphanumeric characters, underscores, periods, and hyphens'
+            )
+        if (
+            len(exclusive_start_shard_id) < MIN_SHARD_ID_LENGTH
+            or len(exclusive_start_shard_id) > MAX_SHARD_ID_LENGTH
+        ):
+            raise ValueError(
+                f'exclusive_start_shard_id length must be between {MIN_SHARD_ID_LENGTH} and {MAX_SHARD_ID_LENGTH} characters'
+            )
+
+    # Validate next_token if provided
+    if next_token is not None:
+        if not isinstance(next_token, str):
+            raise TypeError('next_token must be a string')
+
+    # Validate max_results
+    if max_results is not None:
+        if not isinstance(max_results, int):
+            raise TypeError('max_results must be an integer')
+
+        if max_results < MIN_RESULTS_PER_STREAM or max_results > MAX_RESULTS_PER_STREAM:
+            raise ValueError(
+                f'max_results must be between {MIN_RESULTS_PER_STREAM} and {MAX_RESULTS_PER_STREAM}'
+            )
+
+    # Build parameters
+    params: ListShardsInput = {}
+
+    if exclusive_start_shard_id is not None:
+        params['ExclusiveStartShardId'] = exclusive_start_shard_id
+
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+
+    if next_token is not None:
+        params['NextToken'] = next_token
+
+    if max_results is not None:
+        params['MaxResults'] = max_results
+
+    # Call Kinesis API to list the shards
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.list_shards(**params)
+
+    return response
+
+
+@mcp.tool('tag_resource')
+@handle_exceptions
+def tag_resource(
+    resource_arn: str,
+    tags: Dict[str, str],
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Adds tags to a Kinesis data stream.
+
+    Args:
+        resource_arn: ARN of the resource to add tags to
+        tags: Dictionary of tags to add to the resource
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the response from the Kinesis API
+    """
+    # Validate resource_arn
+    if not resource_arn:
+        raise ValueError('resource_arn is required')
+
+    if not isinstance(resource_arn, str):
+        raise TypeError('resource_arn must be a string')
+
+    if len(resource_arn) < MIN_STREAM_ARN_LENGTH or len(resource_arn) > MAX_STREAM_ARN_LENGTH:
+        raise ValueError(
+            f'resource_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+        )
+
+    # Validate tags
+    if not isinstance(tags, dict):
+        raise TypeError('tags must be a dictionary')
+
+    # Build parameters
+    params: TagResourceInput = {
+        'ResourceARN': resource_arn,
+        'Tags': tags,
+    }
+
+    # Call Kinesis API to add tags to the resource
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.tag_resource(**params)
+
+    return response
+
+
+@mcp.tool('list_tags_for_stream')
+@handle_exceptions
+def list_tags_for_stream(
+    exclusive_start_tag_key: str = None,
+    stream_name: str = None,
+    stream_arn: str = None,
+    limit: int = None,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Lists the tags associated with a Kinesis data stream.
+
+    Args:
+        exclusive_start_tag_key: Tag key to start listing from (default: None)
+        stream_name: Name of the stream to list tags for
+        stream_arn: ARN of the stream to list tags for
+        limit: Maximum number of tags to return (default: None)
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the list of tags and pagination details
+    """
+    # Validate stream identification
+    if stream_name is None and stream_arn is None:
+        raise ValueError('Either stream_name or stream_arn must be provided')
+
+    # Validate stream_name if provided
+    if stream_name is not None:
+        if not isinstance(stream_name, str):
+            raise TypeError('stream_name must be a string')
+
+        if not re.match(r'^[a-zA-Z0-9._-]+$', stream_name):
+            raise ValueError(
+                'stream_name can only contain alphanumeric characters, hyphens, underscores, and periods'
+            )
+
+        if len(stream_name) < MIN_STREAM_NAME_LENGTH or len(stream_name) > MAX_STREAM_NAME_LENGTH:
+            raise ValueError(
+                f'stream_name length must be between {MIN_STREAM_NAME_LENGTH} and {MAX_STREAM_NAME_LENGTH} characters'
+            )
+
+    # Validate stream_arn if provided
+    if stream_arn is not None:
+        if not isinstance(stream_arn, str):
+            raise TypeError('stream_arn must be a string')
+
+        if len(stream_arn) < MIN_STREAM_ARN_LENGTH or len(stream_arn) > MAX_STREAM_ARN_LENGTH:
+            raise ValueError(
+                f'stream_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+            )
+
+    # Validate exclusive_start_tag_key if provided
+    if exclusive_start_tag_key is not None:
+        if not isinstance(exclusive_start_tag_key, str):
+            raise TypeError('exclusive_start_tag_key must be a string')
+
+    # Validate limit if provided
+    if limit is not None:
+        if not isinstance(limit, int):
+            raise TypeError('limit must be an integer')
+
+        if limit < MIN_LIMIT or limit > MAX_LIMIT:
+            raise ValueError(f'limit must be between {MIN_LIMIT} and {MAX_LIMIT}')
+
+    # Build parameters
+    params: ListTagsForStreamInput = {}
+    if exclusive_start_tag_key is not None:
+        params['ExclusiveStartTagKey'] = exclusive_start_tag_key
+    if stream_name is not None:
+        params['StreamName'] = stream_name
+    if stream_arn is not None:
+        params['StreamARN'] = stream_arn
+    if limit is not None:
+        params['Limit'] = limit
+
+    # Call Kinesis API to list the tags for the stream
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.list_tags_for_stream(**params)
+
+    return response
+
+
+@mcp.tool('put_resource_policy')
+@handle_exceptions
+def put_resource_policy(
+    resource_arn: str,
+    policy: str,
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Attaches a resource policy to a Kinesis data stream.
+
+    Args:
+        resource_arn: ARN of the resource to attach the policy to
+        policy: JSON policy document as a string
+        region_name: Region to perform API operation (default: 'us-west-2')
+
+    Returns:
+        Dictionary containing the response from the Kinesis API
+    """
+    # Validate resource_arn
+    if not resource_arn:
+        raise ValueError('resource_arn is required')
+
+    if not isinstance(resource_arn, str):
+        raise TypeError('resource_arn must be a string')
+
+    if len(resource_arn) < MIN_STREAM_ARN_LENGTH or len(resource_arn) > MAX_STREAM_ARN_LENGTH:
+        raise ValueError(
+            f'resource_arn length must be between {MIN_STREAM_ARN_LENGTH} and {MAX_STREAM_ARN_LENGTH} characters'
+        )
+
+    # Validate policy
+    if not policy:
+        raise ValueError('policy is required')
+
+    if not isinstance(policy, str):
+        raise TypeError('policy must be a string')
+
+    # Build parameters
+    params: PutResourcePolicyInput = {
+        'ResourceARN': resource_arn,
+        'Policy': policy,
+    }
+
+    # Call Kinesis API to attach the resource policy
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.put_resource_policy(**params)
 
     return response
 

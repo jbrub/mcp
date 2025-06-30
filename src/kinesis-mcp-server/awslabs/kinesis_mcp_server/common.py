@@ -192,7 +192,7 @@ class ListStreamConsumersInput(TypedDict, total=False):
         MaxResults: Maximum number of consumers to return
     """
 
-    StreamARN: str  # Required - The stream to list consumers for
+    StreamARN: str  # Require
     NextToken: str  # Optional
     StreamCreationTimestamp: Union[datetime, str]  # Optional
     MaxResults: int  # Optional - Default 100
@@ -206,3 +206,100 @@ class ListTagsForResourceInput(TypedDict, total=False):
     """
 
     ResourceARN: str  # Required - The ARN of the resource to list tags for
+
+
+class EnableEnhancedMonitoringInput(TypedDict, total=False):
+    """Input parameters for the enable_enhanced_monitoring operation.
+
+    Attributes:
+        StreamName: Name of the stream to enable monitoring for
+        StreamARN: ARN of the stream to enable monitoring for
+        ShardLevelMetrics: List of metrics to enable
+    """
+
+    ShardLevelMetrics: List[str]  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class GetResourcePolicyInput(TypedDict, total=False):
+    """Input parameters for the get_resource_policy operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to get the policy for
+    """
+
+    ResourceARN: str  # Required
+
+
+class IncreaseStreamRetentionPeriodInput(TypedDict, total=False):
+    """Input parameters for the increase_stream_retention_period operation.
+
+    Attributes:
+        StreamName: Name of the stream to increase retention for
+        StreamARN: ARN of the stream to increase retention for
+        RetentionPeriodHours: New retention period in hours
+    """
+
+    RetentionPeriodHours: int  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class ListShardsInput(TypedDict, total=False):
+    """Input parameters for the list_shards operation.
+
+    Attributes:
+        ExclusiveStartShardId: Shard ID to start listing from
+        StreamName: Name of the stream to list shards for
+        StreamARN: ARN of the stream to list shards for
+        NextToken: Token for pagination
+        MaxResults: Maximum number of shards to return
+    """
+
+    ExclusiveStartShardId: str  # Optional
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    NextToken: str  # Optional
+    MaxResults: int  # Optional - Default 1000
+
+
+class TagResourceInput(TypedDict, total=False):
+    """Input parameters for the tag_resource operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to tag
+        Tags: Tags to associate with the resource
+    """
+
+    ResourceARN: str  # Required
+    Tags: Dict[str, str]  # Required
+
+
+class ListTagsForStreamInput(TypedDict, total=False):
+    """Input parameters for the list_tags_for_stream operation.
+
+    Attributes:
+        StreamName: Name of the stream to list tags for
+        StreamARN: ARN of the stream to list tags for
+        NextToken: Token for pagination
+        Limit: Maximum number of tags to return
+    """
+
+    ExclusiveStartTagKey: str  # Optional
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    Limit: int  # Optional
+
+
+class PutResourcePolicyInput(TypedDict, total=False):
+    """Input parameters for the put_resource_policy operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to attach the policy to
+        Policy: JSON policy document as a string
+        PolicyName: Name of the policy
+    """
+
+    ResourceARN: str  # Required
+    Policy: str  # Required - JSON policy document as a string

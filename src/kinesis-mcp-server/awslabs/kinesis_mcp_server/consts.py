@@ -24,6 +24,7 @@ DEFAULT_STREAM_LIMIT = 100
 DEFAULT_GET_RECORDS_LIMIT = 10000
 DEFAULT_ENCRYPTION_TYPE = 'KMS'
 DEFUALT_MAX_RESULTS = 100
+DEFAULT_MAX_RESULTS = 1000
 
 # =============================================================================
 # Stream Configuration
@@ -79,6 +80,23 @@ VALID_SHARD_ITERATOR_TYPES = {
     'LATEST',
     'AT_TIMESTAMP',
 }
+
+VALID_SHARD_LEVEL_METRICS = {
+    'IncomingBytes',
+    'IncomingRecords',
+    'OutgoingBytes',
+    'OutgoingRecords',
+    'WriteProvisionedThroughputExceeded',
+    'ReadProvisionedThroughputExceeded',
+    'IteratorAgeMilliseconds',
+    'All',
+}
+
+MIN_SHARD_LEVEL_METRICS = 1
+MAX_SHARD_LEVEL_METRICS = 7
+
+MIN_MAX_RESULTS = 1
+MAX_MAX_RESULTS = 10000
 
 # =============================================================================
 # Validation Limits - Tags
