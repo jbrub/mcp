@@ -62,6 +62,9 @@ MIN_SHARD_ID_LENGTH = 1
 MAX_RESULTS_PER_STREAM = 1000
 MIN_RESULTS_PER_STREAM = 1
 
+MIN_TAG_KEYS = 1
+MAX_TAG_KEYS = 50
+
 # =============================================================================
 # Validation Limits - Records
 # =============================================================================
@@ -97,6 +100,14 @@ MAX_SHARD_LEVEL_METRICS = 7
 
 MIN_MAX_RESULTS = 1
 MAX_MAX_RESULTS = 10000
+
+VALID_SCALING_TYPES = {
+    'UNIFORM_SCALING',
+    'STANDARD_SCALING',
+}
+
+MIN_SHARD_COUNT = 1
+MAX_SHARD_COUNT = 10000
 
 # =============================================================================
 # Validation Limits - Tags

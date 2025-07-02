@@ -1,51 +1,74 @@
+import asyncio
 import os
 from datetime import datetime
 from functools import wraps
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Dict, List, Union
 from typing_extensions import TypedDict
 
 
-def handle_exceptions(func: Callable) -> Callable:
-    """Decorator to handle exceptions in Kinesis operations.
+def handle_exceptions(func):
+    """Decorator to handle exceptions for both sync and async functions."""
+    if asyncio.iscoroutinefunction(func):
+        # Async version of the wrapper
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except (ValueError, TypeError):
+                # Always re-raise validation errors
+                raise
+            except Exception as e:
+                print(f'An error occurred: {e}')
+                # Re-raise the exception during testing
+                if os.environ.get('TESTING') == 'true':
+                    raise
+                return None
 
-    Wraps the function in a try-catch block and returns any exceptions in a standardized error format.
-    When TESTING environment variable is set, exceptions are re-raised for better testability.
+        return async_wrapper
+    else:
 
-    Args:
-        func: The function to wrap
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except (ValueError, TypeError):
+                # Always re-raise validation errors
+                raise
+            except Exception as e:
+                print(f'An error occurred: {e}')
+                # Re-raise the exception during testing
+                if os.environ.get('TESTING') == 'true':
+                    raise
+                return None
 
-    Returns:
-        The wrapped function that handles exceptions
-    """
+        return wrapper
+
+
+def confirm_destruction(func):
+    """Decorator to block mutations if DESTRUCTION-CHECK is set to true."""
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except (ValueError, TypeError):
-            # Always re-raise validation errors - these should be visible to users
-            raise
-        except Exception as e:
-            print(f'An error occurred: {e}')
-            # Re-raise the exception during testing
-            if os.environ.get('TESTING') == 'true':
-                raise
-            return None
+        allow_destruction = os.environ.get('CONFIRM-DESTRUCTION', '').lower()
+        if allow_destruction in ('false', 'no'):  # treat these as true
+            return {
+                'message': """
+                    Deletion blocked: Safety mechanism activated
+
+                    This operation was blocked by a safety mechanism designed to prevent accidental deletion of important resources.
+
+                    To proceed with deletion, you have the following options:
+
+                    1. Set the CONFIRM_DESTRUCTIVE_ACTION environment variable to 'false'
+                    2. Use the AWS CLI directly: aws kinesis delete-stream --stream-name <name> --enforce-consumer-deletion
+                    3. Use the AWS Console to delete the resource through the web interface
+
+                    WARNING: Deletion will permanently remove all data in this resource.
+                """
+            }
+        return func(*args, **kwargs)
 
     return wrapper
-
-
-# TODO: Need to fix this
-def is_destructive_action_allowed():
-    """Check if destructive actions are allowed based on environment variable.
-
-    Returns:
-        tuple: (allowed, error_message) where allowed is a boolean and error_message is None if allowed
-    """
-    confirm_destruction = os.environ.get('CONFIRM_DESTRUCTIVE_ACTION', 'false').lower()
-    if confirm_destruction in ('true', '1', 'yes'):
-        return False, {'error': 'Mutation not allowed: CONFIRM_DESTRUCTIVE_ACTION is set to true.'}
-    return True, None
 
 
 class PutRecordsInput(TypedDict, total=False):
@@ -177,7 +200,7 @@ class DescribeStreamConsumerInput(TypedDict, total=False):
         ConsumerName: Name of the consumer to describe
     """
 
-    StreamARN: str  # Required - The stream the consumer belongs to
+    StreamARN: str  # Optional
     ConsumerARN: str  # Optional - Either ConsumerARN or ConsumerName required
     ConsumerName: str  # Optional - Either ConsumerARN or ConsumerName required
 
@@ -303,3 +326,190 @@ class PutResourcePolicyInput(TypedDict, total=False):
 
     ResourceARN: str  # Required
     Policy: str  # Required - JSON policy document as a string
+
+
+# =========================================================
+# Eleveated permissions tools
+# =========================================================
+
+
+class DeleteStreamInput(TypedDict, total=False):
+    """Input parameters for the delete_stream operation.
+
+    Attributes:
+        StreamName: Name of the stream to delete
+        StreamARN: ARN of the stream to delete
+    """
+
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    EnforceConsumerDeletion: bool  # Optional
+
+
+class DecreaseStreamRetentionPeriodInput(TypedDict, total=False):
+    """Input parameters for the decrease_stream_retention_period operation.
+
+    Attributes:
+        StreamName: Name of the stream to decrease retention for
+        StreamARN: ARN of the stream to decrease retention for
+        RetentionPeriodHours: New retention period in hours
+    """
+
+    RetentionPeriodHours: int  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class DeleteResourcePolicyInput(TypedDict, total=False):
+    """Input parameters for the delete_resource_policy operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to delete the policy from
+    """
+
+    ResourceARN: str  # Required
+
+
+class DeregisterStreamConsumerInput(TypedDict, total=False):
+    """Input parameters for the deregister_stream_consumer operation.
+
+    Attributes:
+        ConsumerARN: ARN of the consumer to deregister
+        StreamARN: ARN of the stream the consumer belongs to
+        ConsumerName: Name of the consumer to deregister
+    """
+
+    StreamARN: str  # Optional
+    ConsumerARN: str  # Optional - Either ConsumerARN or ConsumerName required
+    ConsumerName: str  # Optional - Either ConsumerARN or ConsumerName required
+
+
+class DisableEnhancedMonitoringInput(TypedDict, total=False):
+    """Input parameters for the disable_enhanced_monitoring operation.
+
+    Attributes:
+        StreamName: Name of the stream to disable monitoring for
+        StreamARN: ARN of the stream to disable monitoring for
+        ShardLevelMetrics: List of metrics to disable
+    """
+
+    ShardLevelMetrics: List[str]  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class MergeShardsInput(TypedDict, total=False):
+    """Input parameters for the merge_shards operation.
+
+    Attributes:
+        StreamName: Name of the stream to merge shards in
+        StreamARN: ARN of the stream to merge shards in
+        ShardToMerge: ID of the shard to merge
+        AdjacentShardToMerge: ID of the adjacent shard to merge with
+    """
+
+    ShardToMerge: str  # Required
+    AdjacentShardToMerge: str  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class RemoveTagsFromStreamInput(TypedDict, total=False):
+    """Input parameters for the remove_tags_from_stream operation.
+
+    Attributes:
+        StreamName: Name of the stream to remove tags from
+        StreamARN: ARN of the stream to remove tags from
+        TagKeys: List of tag keys to remove
+    """
+
+    TagKeys: List[str]  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class SplitShardInput(TypedDict, total=False):
+    """Input parameters for the split_shard operation.
+
+    Attributes:
+        StreamName: Name of the stream to split shards in
+        StreamARN: ARN of the stream to split shards in
+        ShardToSplit: ID of the shard to split
+        NewStartingHashKey: New starting hash key for the new shard
+    """
+
+    ShardToSplit: str  # Required
+    NewStartingHashKey: str  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class StartStreamEncryptionInput(TypedDict, total=False):
+    """Input parameters for the start_stream_encryption operation.
+
+    Attributes:
+        StreamName: Name of the stream to encrypt
+        StreamARN: ARN of the stream to encrypt
+        EncryptionType: Type of encryption to use (e.g., KMS)
+        KeyId: ID of the KMS key to use for encryption
+    """
+
+    EncryptionType: str  # Required
+    KeyId: str  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class StopStreamEncryptionInput(TypedDict, total=False):
+    """Input parameters for the stop_stream_encryption operation.
+
+    Attributes:
+        StreamName: Name of the stream to stop encryption for
+        StreamARN: ARN of the stream to stop encryption for
+        EncryptionType: Type of encryption to stop (e.g., KMS)
+    """
+
+    EncryptionType: str  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class UntagResourceInput(TypedDict, total=False):
+    """Input parameters for the untag_resource operation.
+
+    Attributes:
+        ResourceARN: ARN of the resource to remove tags from
+        TagKeys: List of tag keys to remove
+    """
+
+    ResourceARN: str  # Required
+    TagKeys: List[str]  # Required
+
+
+class UpdateShardCountInput(TypedDict, total=False):
+    """Input parameters for the update_shard_count operation.
+
+    Attributes:
+        StreamName: Name of the stream to update shard count for
+        StreamARN: ARN of the stream to update shard count for
+        TargetShardCount: Desired number of shards
+        ScalingType: Type of scaling (e.g., UNIFORM_SCALING)
+    """
+
+    TargetShardCount: int  # Required
+    ScalingType: str  # Required - Valid values: UNIFORM_SCALING | STANDARD_SCALING
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+
+
+class UpdateStreamModeInput(TypedDict, total=False):
+    """Input parameters for the update_stream_mode operation.
+
+    Attributes:
+        StreamName: Name of the stream to update mode for
+        StreamARN: ARN of the stream to update mode for
+        StreamModeDetails: Details about the new stream mode
+    """
+
+    StreamModeDetails: Dict[str, str]  # Required
+    StreamARN: str  # Required
