@@ -49,7 +49,7 @@ To use these tools, ensure you have proper AWS credentials configured with appro
 
 All tools support an optional `region_name` parameter to specify which AWS region to operate in. If not provided, it will use the AWS_REGION environment variable or default to 'us-west-2'.
 
-*IMPORTANT* If you want to have access to non read only tools, you must set the flag in `KINESIS-READONLY` to `false`. The default setup will have this flag set to `true`.
+**IMPORTANT**: If you want to have access to non read only tools, you must set the flag in `KINESIS-READONLY` to `false`. The default setup will have this flag set to `true`.
 
 ## Prerequisites
 
