@@ -65,13 +65,13 @@ def handle_exceptions(func: Callable) -> Callable:
 
 
 def mutation_check(func):
-    """Decorator to block mutations if KINESIS-READONLY is set to true."""
+    """Decorator to block mutations if KINESIS-READONLY is set to false."""
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
-        allow_destruction = os.environ.get('KINESIS-READONLY', '').lower()
-        if allow_destruction in ('false', 'no'):
-            """This return message needs to be specificly worded as "Operation Blocked." If it is not worded
+    async def wrapper(*args, **kwargs):
+        read_only = os.environ.get('KINESIS-READONLY', '').lower()
+        if read_only not in ('false', 'no'):
+            """This return message needs to be specifically worded as "Operation Blocked." If it is not worded
             this way, there is a chance that the agent will disagree and create its own error message. Read developer
             documentation for more information."""
             return {
@@ -82,14 +82,14 @@ def mutation_check(func):
 
                     To proceed with this operation, you have the following options:
 
-                    1. Set the KINESIS-READONLY environment variable to 'true'
+                    1. Set the KINESIS-READONLY environment variable to 'false'
                     2. Use the AWS CLI directly with appropriate credentials
                     3. Use the AWS Console with appropriate permissions
 
                     Note: This is a safety mechanism to prevent unintended modifications to important resources.
                 """
             }
-        return func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
     return wrapper
 

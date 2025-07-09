@@ -277,7 +277,7 @@ async def describe_stream_summary(
     stream_arn: Optional[str] = Field(default=None, description='ARN of the stream to describe'),
     region_name: str = DEFAULT_REGION,
 ) -> Dict[str, Any]:
-    """Describes the stream summary."""
+    """Returns a description summary of a stream."""
     # Initialize parameters
     params: DescribeStreamSummaryInput = {}
 
