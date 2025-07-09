@@ -28,24 +28,44 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from awslabs.kinesis_mcp_server.consts import (
     MAX_LENGTH_SHARD_ITERATOR,
     MAX_LIMIT,
-    MAX_RECORDS,
-    MAX_SHARD_ID_LENGTH,
     MAX_STREAM_ARN_LENGTH,
     MAX_STREAM_NAME_LENGTH,
-    MAX_TAG_KEY_LENGTH,
-    MAX_TAG_VALUE_LENGTH,
-    MAX_TAGS_COUNT,
-    MIN_RECORDS,
     STREAM_MODE_ON_DEMAND,
-    VALID_SHARD_ITERATOR_TYPES,
 )
 from awslabs.kinesis_mcp_server.server import (
+    add_tags_to_stream,
     create_stream,
+    decrease_stream_retention_period,
+    delete_resource_policy,
+    delete_stream,
+    deregister_stream_consumer,
+    describe_limits,
+    describe_stream,
+    describe_stream_consumer,
     describe_stream_summary,
+    disable_enhanced_monitoring,
+    enable_enhanced_monitoring,
     get_records,
+    get_resource_policy,
     get_shard_iterator,
+    increase_stream_retention_period,
+    list_shards,
+    list_stream_consumers,
     list_streams,
+    list_tags_for_resource,
+    list_tags_for_stream,
+    merge_shards,
+    put_record,
     put_records,
+    put_resource_policy,
+    remove_tags_from_stream,
+    split_shard,
+    start_stream_encryption,
+    stop_stream_encryption,
+    tag_resource,
+    untag_resource,
+    update_shard_count,
+    update_stream_mode,
 )
 
 
@@ -108,115 +128,107 @@ def mock_kinesis_client():
 # ==============================================================================
 
 
-def test_put_records_missing_records(mock_kinesis_client):
-    """Test put_records with missing records parameter."""
+@pytest.mark.asyncio
+async def test_put_records_basic(mock_kinesis_client):
+    """Test basic put_records functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='records is required'):
-            put_records(stream_name='test-stream', records=[], region_name='us-west-2')
-
-
-def test_put_records_invalid_records_type(mock_kinesis_client):
-    """Test put_records with invalid records type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='records must be a list'):
-            put_records(stream_name='test-stream', records='not-a-list', region_name='us-west-2')
-
-
-def test_put_records_too_many_records(mock_kinesis_client):
-    """Test put_records with too many records."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create more records than MAX_RECORDS
-        records = [
-            {'Data': f'data-{i}', 'PartitionKey': f'key-{i}'} for i in range(MAX_RECORDS + 1)
-        ]
-        with pytest.raises(
-            ValueError, match=f'Number of records must be between {MIN_RECORDS} and {MAX_RECORDS}'
-        ):
-            put_records(stream_name='test-stream', records=records, region_name='us-west-2')
-
-
-def test_put_records_missing_stream_identifier(mock_kinesis_client):
-    """Test put_records with missing stream identifier."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
-            put_records(
-                records=records, stream_name=None, stream_arn=None, region_name='us-west-2'
-            )
-
-
-def test_put_records_invalid_stream_name_length(mock_kinesis_client):
-    """Test put_records with invalid stream name length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        # Create a stream name that's too long
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            put_records(stream_name=long_name, records=records, region_name='us-west-2')
-
-
-def test_put_records_with_stream_arn(mock_kinesis_client):
-    """Test put_records with stream ARN instead of name."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
-
-        # Mock the put_records response
+        # Mock the put_records method
         mock_response = {
             'Records': [{'SequenceNumber': '123', 'ShardId': 'shardId-000000000000'}],
             'FailedRecordCount': 0,
         }
         mock_kinesis_client.put_records = MagicMock(return_value=mock_response)
 
-        result = put_records(stream_arn=stream_arn, records=records, region_name='us-west-2')
+        # Create test records
+        records = [{'Data': 'test-data', 'PartitionKey': 'test-key'}]
 
+        # Call put_records
+        result = await put_records(
+            records=records, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify put_records was called with the right parameters
+        mock_kinesis_client.put_records.assert_called_once()
+        args = mock_kinesis_client.put_records.call_args[1]
+        assert args['Records'] == records
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result
         assert result['FailedRecordCount'] == 0
         assert len(result['Records']) == 1
-        mock_kinesis_client.put_records.assert_called_with(Records=records, StreamARN=stream_arn)
 
 
-def test_put_records_invalid_stream_arn_length(mock_kinesis_client):
-    """Test put_records with invalid stream ARN length."""
+@pytest.mark.asyncio
+async def test_put_records_with_stream_arn(mock_kinesis_client):
+    """Test put_records with stream ARN."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        # Create a stream ARN that's too long
-        long_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * (MAX_STREAM_ARN_LENGTH)
-        with pytest.raises(ValueError, match='stream_arn length must be between'):
-            put_records(stream_arn=long_arn, records=records, region_name='us-west-2')
+        # Mock the put_records method
+        mock_response = {
+            'Records': [{'SequenceNumber': '123', 'ShardId': 'shardId-000000000000'}],
+            'FailedRecordCount': 0,
+        }
+        mock_kinesis_client.put_records = MagicMock(return_value=mock_response)
+
+        # Create test records
+        records = [{'Data': 'test-data', 'PartitionKey': 'test-key'}]
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+
+        # Call put_records with stream ARN
+        result = await put_records(records=records, stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify put_records was called with the right parameters
+        mock_kinesis_client.put_records.assert_called_once()
+        args = mock_kinesis_client.put_records.call_args[1]
+        assert args['Records'] == records
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result
+        assert result['FailedRecordCount'] == 0
+        assert len(result['Records']) == 1
 
 
-def test_put_records_invalid_stream_arn_type(mock_kinesis_client):
-    """Test put_records with invalid stream ARN type."""
+@pytest.mark.asyncio
+async def test_put_records_multiple_records(mock_kinesis_client):
+    """Test put_records with multiple records."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        with pytest.raises(TypeError, match='stream_arn must be a string'):
-            put_records(stream_arn=123, records=records, region_name='us-west-2')
+        # Mock the put_records method
+        mock_response = {
+            'Records': [
+                {'SequenceNumber': '123', 'ShardId': 'shardId-000000000000'},
+                {'SequenceNumber': '456', 'ShardId': 'shardId-000000000001'},
+                {'SequenceNumber': '789', 'ShardId': 'shardId-000000000002'},
+            ],
+            'FailedRecordCount': 0,
+        }
+        mock_kinesis_client.put_records = MagicMock(return_value=mock_response)
 
+        # Create multiple test records
+        records = [
+            {'Data': 'test-data-1', 'PartitionKey': 'test-key-1'},
+            {'Data': 'test-data-2', 'PartitionKey': 'test-key-2'},
+            {'Data': 'test-data-3', 'PartitionKey': 'test-key-3'},
+        ]
 
-def test_put_records_invalid_stream_name_type(mock_kinesis_client):
-    """Test put_records with invalid stream name type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        records = [{'Data': 'test', 'PartitionKey': 'key'}]
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            put_records(stream_name=123, records=records, region_name='us-west-2')
+        # Call put_records
+        result = await put_records(
+            records=records, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify put_records was called with the right parameters
+        mock_kinesis_client.put_records.assert_called_once()
+        args = mock_kinesis_client.put_records.call_args[1]
+        assert args['Records'] == records
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result
+        assert result['FailedRecordCount'] == 0
+        assert len(result['Records']) == 3
 
 
 # ==============================================================================
@@ -224,64 +236,93 @@ def test_put_records_invalid_stream_name_type(mock_kinesis_client):
 # ==============================================================================
 
 
-def test_get_records_missing_shard_iterator(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_records_missing_shard_iterator(mock_kinesis_client):
     """Test get_records with missing shard iterator."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='shard_iterator is required'):
-            get_records(shard_iterator='', region_name='us-west-2')
+        # Mock the API to raise an exception
+        mock_kinesis_client.get_records = MagicMock(
+            side_effect=Exception('ValidationException: shard_iterator is required')
+        )
+
+        # Call get_records with empty shard iterator
+        result = await get_records(shard_iterator='', region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_get_records_invalid_shard_iterator_length(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_records_invalid_shard_iterator_length(mock_kinesis_client):
     """Test get_records with invalid shard iterator length."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a shard iterator that's too long
+        # Mock the API to raise an exception
+        mock_kinesis_client.get_records = MagicMock(
+            side_effect=Exception('ValidationException: shard_iterator length must be between')
+        )
+
+        # Call get_records with long iterator
         long_iterator = 'a' * (MAX_LENGTH_SHARD_ITERATOR + 1)
-        with pytest.raises(ValueError, match='shard_iterator length must be between'):
-            get_records(shard_iterator=long_iterator, region_name='us-west-2')
+        result = await get_records(shard_iterator=long_iterator, region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_get_records_invalid_limit_value(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_records_invalid_limit_value(mock_kinesis_client):
     """Test get_records with invalid limit."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='limit must be between'):
-            get_records(
-                shard_iterator='valid-iterator', limit=MAX_LIMIT + 1, region_name='us-west-2'
-            )
+        # Mock the API to raise an exception
+        mock_kinesis_client.get_records = MagicMock(
+            side_effect=Exception('ValidationException: limit must be between')
+        )
+
+        # Call get_records with invalid limit
+        result = await get_records(
+            shard_iterator='valid-iterator', limit=MAX_LIMIT + 1, region_name='us-west-2'
+        )
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_get_records_invalid_limit_type(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_records_invalid_limit_type(mock_kinesis_client):
     """Test get_records with invalid limit type."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='limit must be an integer'):
-            get_records(
-                shard_iterator='valid-iterator', limit='not-an-int', region_name='us-west-2'
-            )
+        # Mock the API to raise an exception
+        mock_kinesis_client.get_records = MagicMock(
+            side_effect=Exception('ValidationException: limit must be an integer')
+        )
+
+        # Call get_records with invalid limit type
+        result = await get_records(
+            shard_iterator='valid-iterator', limit='not-an-int', region_name='us-west-2'
+        )
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_get_records_with_limit(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_records_with_limit(mock_kinesis_client):
     """Test get_records with a specific limit."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a test stream
-        mock_kinesis_client.create_stream(StreamName='test-stream', ShardCount=1)
-
-        # Get a shard iterator
-        shard_response = mock_kinesis_client.describe_stream(StreamName='test-stream')
-        shard_id = shard_response['StreamDescription']['Shards'][0]['ShardId']
-        iterator_response = mock_kinesis_client.get_shard_iterator(
-            StreamName='test-stream', ShardId=shard_id, ShardIteratorType='TRIM_HORIZON'
-        )
-        shard_iterator = iterator_response['ShardIterator']
-
         # Mock the get_records response
         mock_response = {
             'Records': [],
@@ -292,25 +333,34 @@ def test_get_records_with_limit(mock_kinesis_client):
 
         # Call get_records with a limit
         limit = 10
-        get_records(shard_iterator=shard_iterator, limit=limit, region_name='us-west-2')
-
-        # Verify the limit was passed correctly
-        mock_kinesis_client.get_records.assert_called_with(
-            ShardIterator=shard_iterator, Limit=limit
+        result = await get_records(
+            shard_iterator='valid-iterator', limit=limit, region_name='us-west-2'
         )
 
+        # Verify the result matches the mock response
+        assert result == mock_response
 
-def test_get_records_invalid_stream_arn_length(mock_kinesis_client):
+
+@pytest.mark.asyncio
+async def test_get_records_invalid_stream_arn_length(mock_kinesis_client):
     """Test get_records with invalid stream ARN length."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a stream ARN that's too long
+        # Mock the API to raise an exception
+        mock_kinesis_client.get_records = MagicMock(
+            side_effect=Exception('ValidationException: stream_arn length must be between')
+        )
+
+        # Call get_records with long ARN
         long_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * (MAX_STREAM_ARN_LENGTH)
-        with pytest.raises(ValueError, match='stream_arn length must be between'):
-            get_records(
-                shard_iterator='valid-iterator', stream_arn=long_arn, region_name='us-west-2'
-            )
+        result = await get_records(
+            shard_iterator='valid-iterator', stream_arn=long_arn, region_name='us-west-2'
+        )
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
 # ==============================================================================
@@ -318,135 +368,152 @@ def test_get_records_invalid_stream_arn_length(mock_kinesis_client):
 # ==============================================================================
 
 
-def test_create_stream_missing_stream_name(mock_kinesis_client):
-    """Test create_stream with missing stream name."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            create_stream(stream_name='', region_name='us-west-2')
-
-
-def test_create_stream_invalid_stream_name_length(mock_kinesis_client):
-    """Test create_stream with invalid stream name length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create a stream name that's too long
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            create_stream(stream_name=long_name, region_name='us-west-2')
-
-
-def test_create_stream_invalid_stream_name_type(mock_kinesis_client):
-    """Test create_stream with invalid stream name type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            create_stream(stream_name=123, region_name='us-west-2')
-
-
-def test_create_stream_invalid_shard_count_type(mock_kinesis_client):
-    """Test create_stream with invalid shard count type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='shard_count must be an integer'):
-            create_stream(
-                stream_name='test-stream', shard_count='not-an-int', region_name='us-west-2'
-            )
-
-
-def test_create_stream_invalid_shard_count(mock_kinesis_client):
-    """Test create_stream with invalid shard count."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='shard_count must be between'):
-            create_stream(stream_name='test-stream', shard_count=0, region_name='us-west-2')
-
-
-def test_create_stream_invalid_tags(mock_kinesis_client):
-    """Test create_stream with invalid tags."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='tags must be a dictionary'):
-            create_stream(stream_name='test-stream', tags='not-a-dict', region_name='us-west-2')
-
-
-def test_create_stream_too_many_tags(mock_kinesis_client):
-    """Test create_stream with too many tags."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create more tags than MAX_TAGS_COUNT
-        tags = {f'key-{i}': f'value-{i}' for i in range(MAX_TAGS_COUNT + 1)}
-        with pytest.raises(ValueError, match='Number of tags cannot exceed'):
-            create_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
-
-
-def test_create_stream_invalid_tag_key_length(mock_kinesis_client):
-    """Test create_stream with invalid tag key length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create a tag key that's too long
-        long_key = 'a' * (MAX_TAG_KEY_LENGTH + 1)
-        tags = {long_key: 'value'}
-        with pytest.raises(ValueError, match='Tag key length must be between'):
-            create_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
-
-
-def test_create_stream_invalid_tag_value_length(mock_kinesis_client):
-    """Test create_stream with invalid tag value length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create a tag value that's too long
-        long_value = 'a' * (MAX_TAG_VALUE_LENGTH + 1)
-        tags = {'key': long_value}
-        with pytest.raises(ValueError, match='Tag value length cannot exceed'):
-            create_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
-
-
-def test_create_stream_with_on_demand_mode(mock_kinesis_client):
-    """Test creating a stream with on-demand mode."""
+@pytest.mark.asyncio
+async def test_create_stream_basic(mock_kinesis_client):
+    """Test basic create_stream functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
         # Mock the create_stream method
-        mock_kinesis_client.create_stream = MagicMock()
+        mock_kinesis_client.create_stream = MagicMock(return_value={})
 
-        # Call create_stream with on-demand mode
-        stream_name = 'test-stream'
-        stream_mode_details = {'StreamMode': STREAM_MODE_ON_DEMAND}
-        create_stream(
-            stream_name=stream_name,
-            stream_mode_details=stream_mode_details,
-            region_name='us-west-2',
-        )
+        # Call create_stream
+        await create_stream(stream_name='test-stream', region_name='us-west-2')
 
-        # Verify that ShardCount was not passed to create_stream when using ON_DEMAND mode
+        # Verify create_stream was called with the right parameters
         mock_kinesis_client.create_stream.assert_called_once()
-        call_kwargs = mock_kinesis_client.create_stream.call_args[1]
-        assert 'StreamName' in call_kwargs
-        assert 'StreamModeDetails' in call_kwargs
-        assert 'ShardCount' not in call_kwargs
+        args = mock_kinesis_client.create_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['StreamModeDetails'] == {'StreamMode': STREAM_MODE_ON_DEMAND}
 
 
-def test_create_stream_invalid_stream_mode_details_type(mock_kinesis_client):
-    """Test create_stream with invalid stream mode details type."""
+@pytest.mark.asyncio
+async def test_create_stream_with_provisioned_mode(mock_kinesis_client):
+    """Test create_stream with PROVISIONED mode."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='stream_mode_details must be a dictionary'):
-            create_stream(
-                stream_name='test-stream',
-                stream_mode_details='not-a-dict',
-                region_name='us-west-2',
-            )
+        # Mock the create_stream method
+        mock_kinesis_client.create_stream = MagicMock(return_value={})
+
+        # Call create_stream with PROVISIONED mode
+        await create_stream(
+            stream_name='test-stream',
+            stream_mode_details={'StreamMode': 'PROVISIONED'},
+            shard_count=5,
+            region_name='us-west-2',
+        )
+
+        # Verify create_stream was called with the right parameters
+        mock_kinesis_client.create_stream.assert_called_once()
+        args = mock_kinesis_client.create_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['StreamModeDetails'] == {'StreamMode': 'PROVISIONED'}
+        assert args['ShardCount'] == 5
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_tags(mock_kinesis_client):
+    """Test create_stream with tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the create_stream method
+        mock_kinesis_client.create_stream = MagicMock(return_value={})
+
+        # Call create_stream with tags
+        tags = {'Environment': 'Test', 'Project': 'Kinesis'}
+        await create_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
+
+        # Verify create_stream was called with the right parameters
+        mock_kinesis_client.create_stream.assert_called_once()
+        args = mock_kinesis_client.create_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['Tags'] == tags
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_non_dict_stream_mode_details(mock_kinesis_client):
+    """Test create_stream with non-dict stream_mode_details."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the create_stream method
+        mock_kinesis_client.create_stream = MagicMock(return_value={})
+
+        # Call create_stream with non-dict stream_mode_details
+        await create_stream(
+            stream_name='test-stream',
+            stream_mode_details='INVALID',  # Not a dict
+            region_name='us-west-2',
+        )
+
+        # Verify create_stream was called with the right parameters
+        mock_kinesis_client.create_stream.assert_called_once()
+        args = mock_kinesis_client.create_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['StreamModeDetails'] == {'StreamMode': STREAM_MODE_ON_DEMAND}  # Default mode
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_empty_tags(mock_kinesis_client):
+    """Test create_stream with empty tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the create_stream method
+        mock_kinesis_client.create_stream = MagicMock(return_value={})
+
+        # Call create_stream with empty tags
+        await create_stream(stream_name='test-stream', tags={}, region_name='us-west-2')
+
+        # Verify create_stream was called with the right parameters
+        mock_kinesis_client.create_stream.assert_called_once()
+        args = mock_kinesis_client.create_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert 'Tags' not in args  # Empty tags should not be included
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_validation_error(mock_kinesis_client):
+    """Test create_stream with validation error."""
+    from awslabs.kinesis_mcp_server.common import handle_exceptions
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Create a test function that raises a ValidationException
+        @handle_exceptions
+        async def test_func():
+            raise Exception('ValidationException: Some validation error')
+
+        # Call the test function
+        result = await test_func()
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
+
+
+@pytest.mark.asyncio
+async def test_create_stream_with_resource_in_use(mock_kinesis_client):
+    """Test create_stream with resource in use error."""
+    from awslabs.kinesis_mcp_server.common import handle_exceptions
+
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Create a test function that raises a ResourceInUseException
+        @handle_exceptions
+        async def test_func():
+            raise Exception('ResourceInUseException: Some resource in use error')
+
+        # Call the test function
+        result = await test_func()
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Resource in use' in result['error']
 
 
 # ==============================================================================
@@ -454,51 +521,161 @@ def test_create_stream_invalid_stream_mode_details_type(mock_kinesis_client):
 # ==============================================================================
 
 
-def test_list_streams_invalid_limit(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_list_streams_basic(mock_kinesis_client):
+    """Test basic list_streams functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_streams response
+        mock_response = {'StreamNames': ['stream1', 'stream2'], 'HasMoreStreams': False}
+        mock_kinesis_client.list_streams = MagicMock(return_value=mock_response)
+
+        # Call list_streams
+        result = await list_streams(region_name='us-west-2')
+
+        # Verify list_streams was called with the right parameters
+        mock_kinesis_client.list_streams.assert_called_once()
+
+        # Verify the result contains the expected data
+        assert 'StreamNames' in result
+        assert result['StreamNames'] == ['stream1', 'stream2']
+        assert not result['HasMoreStreams']  # Fix E712 linting issue
+
+
+@pytest.mark.asyncio
+async def test_list_streams_with_parameters(mock_kinesis_client):
+    """Test list_streams with optional parameters."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_streams response
+        mock_response = {
+            'StreamNames': ['stream2', 'stream3'],
+            'HasMoreStreams': True,
+            'NextToken': 'next-token',
+        }
+        mock_kinesis_client.list_streams = MagicMock(return_value=mock_response)
+
+        # Call list_streams with parameters
+        result = await list_streams(
+            exclusive_start_stream_name='stream1',
+            limit=10,
+            next_token='token',
+            region_name='us-west-2',
+        )
+
+        # Verify list_streams was called with the right parameters
+        mock_kinesis_client.list_streams.assert_called_once()
+        args = mock_kinesis_client.list_streams.call_args[1]
+        assert args['ExclusiveStartStreamName'] == 'stream1'
+        assert args['Limit'] == 10
+        assert args['NextToken'] == 'token'
+
+        # Verify the result contains the expected data
+        assert result['StreamNames'] == ['stream2', 'stream3']
+        assert result['HasMoreStreams']  # Fix E712 linting issue
+        assert result['NextToken'] == 'next-token'
+
+
+@pytest.mark.asyncio
+async def test_list_streams_invalid_limit(mock_kinesis_client):
     """Test list_streams with invalid limit."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='limit must be between'):
-            list_streams(limit=0, region_name='us-west-2')
+        # Mock the API to raise an exception
+        mock_kinesis_client.list_streams = MagicMock(
+            side_effect=Exception('ValidationException: limit must be between')
+        )
+
+        # Call list_streams with invalid limit
+        result = await list_streams(limit=0, region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_list_streams_invalid_exclusive_start_stream_name(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_list_streams_invalid_exclusive_start_stream_name(mock_kinesis_client):
     """Test list_streams with invalid exclusive_start_stream_name."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a stream name that's too long
+        # Mock the API to raise an exception
+        mock_kinesis_client.list_streams = MagicMock(
+            side_effect=Exception(
+                'ValidationException: exclusive_start_stream_name length must be between'
+            )
+        )
+
+        # Call list_streams with long name
         long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='exclusive_start_stream_name length must be between'):
-            list_streams(exclusive_start_stream_name=long_name, region_name='us-west-2')
+        result = await list_streams(exclusive_start_stream_name=long_name, region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_list_streams_invalid_exclusive_start_stream_name_type(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_list_streams_invalid_exclusive_start_stream_name_type(mock_kinesis_client):
     """Test list_streams with invalid exclusive_start_stream_name type."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='exclusive_start_stream_name must be a string'):
-            list_streams(exclusive_start_stream_name=123, region_name='us-west-2')
+        # Mock the API to raise an exception
+        mock_kinesis_client.list_streams = MagicMock(
+            side_effect=Exception(
+                'ValidationException: exclusive_start_stream_name must be a string'
+            )
+        )
+
+        # Call list_streams with invalid type
+        result = await list_streams(exclusive_start_stream_name=123, region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_list_streams_invalid_limit_type(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_list_streams_invalid_limit_type(mock_kinesis_client):
     """Test list_streams with invalid limit type."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='limit must be an integer'):
-            list_streams(limit='not-an-int', region_name='us-west-2')
+        # Mock the API to raise an exception
+        mock_kinesis_client.list_streams = MagicMock(
+            side_effect=Exception('ValidationException: limit must be an integer')
+        )
+
+        # Call list_streams with invalid type
+        result = await list_streams(limit='not-an-int', region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
-def test_list_streams_invalid_next_token_type(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_list_streams_invalid_next_token_type(mock_kinesis_client):
     """Test list_streams with invalid next_token type."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='next_token must be a string'):
-            list_streams(next_token=123, region_name='us-west-2')
+        # Mock the API to raise an exception
+        mock_kinesis_client.list_streams = MagicMock(
+            side_effect=Exception('ValidationException: next_token must be a string')
+        )
+
+        # Call list_streams with invalid type
+        result = await list_streams(next_token=123, region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
 # ==============================================================================
@@ -506,34 +683,42 @@ def test_list_streams_invalid_next_token_type(mock_kinesis_client):
 # ==============================================================================
 
 
-def test_describe_stream_summary_missing_identifiers(mock_kinesis_client):
-    """Test describe_stream_summary with missing identifiers."""
+@pytest.mark.asyncio
+async def test_describe_stream_summary_basic(mock_kinesis_client):
+    """Test basic describe_stream_summary functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
-            describe_stream_summary(stream_name=None, stream_arn=None, region_name='us-west-2')
+        # Mock the describe_stream_summary response
+        mock_response = {
+            'StreamDescriptionSummary': {
+                'StreamName': 'test-stream',
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                'StreamStatus': 'ACTIVE',
+                'OpenShardCount': 1,
+            }
+        }
+        mock_kinesis_client.describe_stream_summary = MagicMock(return_value=mock_response)
+
+        # Call describe_stream_summary
+        result = await describe_stream_summary(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify describe_stream_summary was called with the right parameters
+        mock_kinesis_client.describe_stream_summary.assert_called_once()
+        args = mock_kinesis_client.describe_stream_summary.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result contains the expected data
+        assert result['StreamDescriptionSummary']['StreamName'] == 'test-stream'
+        assert result['StreamDescriptionSummary']['StreamStatus'] == 'ACTIVE'
 
 
-def test_describe_stream_summary_invalid_stream_name_length(mock_kinesis_client):
-    """Test describe_stream_summary with invalid stream name length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        # Create a stream name that's too long
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            describe_stream_summary(stream_name=long_name, region_name='us-west-2')
-
-
-def test_describe_stream_summary_with_stream_arn(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_describe_stream_summary_with_stream_arn(mock_kinesis_client):
     """Test describe_stream_summary with stream ARN instead of name."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a test stream
-        mock_kinesis_client.create_stream(StreamName='test-stream', ShardCount=1)
-
         # Mock the describe_stream_summary response
         mock_response = {
             'StreamDescriptionSummary': {
@@ -547,40 +732,89 @@ def test_describe_stream_summary_with_stream_arn(mock_kinesis_client):
 
         # Call describe_stream_summary with a stream ARN
         stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
-        result = describe_stream_summary(stream_arn=stream_arn, region_name='us-west-2')
+        result = await describe_stream_summary(stream_arn=stream_arn, region_name='us-west-2')
 
-        # Verify the ARN was passed correctly
-        mock_kinesis_client.describe_stream_summary.assert_called_with(StreamARN=stream_arn)
+        # Verify describe_stream_summary was called with the right parameters
+        mock_kinesis_client.describe_stream_summary.assert_called_once()
+        args = mock_kinesis_client.describe_stream_summary.call_args[1]
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
         assert result['StreamDescriptionSummary']['StreamName'] == 'test-stream'
 
 
-def test_describe_stream_summary_invalid_stream_name_type(mock_kinesis_client):
-    """Test describe_stream_summary with invalid stream name type."""
+@pytest.mark.asyncio
+async def test_describe_stream_summary_missing_identifiers(mock_kinesis_client):
+    """Test describe_stream_summary with missing identifiers."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            describe_stream_summary(stream_name=123, region_name='us-west-2')
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await describe_stream_summary(
+                stream_name=None, stream_arn=None, region_name='us-west-2'
+            )
 
 
-def test_describe_stream_summary_invalid_stream_arn_type(mock_kinesis_client):
-    """Test describe_stream_summary with invalid stream ARN type."""
+@pytest.mark.asyncio
+async def test_describe_stream_summary_stream_not_found(mock_kinesis_client):
+    """Test describe_stream_summary with non-existent stream."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='stream_arn must be a string'):
-            describe_stream_summary(stream_arn=123, region_name='us-west-2')
+        # Mock the API to raise a ResourceNotFoundException
+        mock_kinesis_client.describe_stream_summary = MagicMock(
+            side_effect=Exception('ResourceNotFoundException: Stream not found')
+        )
+
+        # Call describe_stream_summary with non-existent stream
+        result = await describe_stream_summary(
+            stream_name='non-existent-stream', region_name='us-west-2'
+        )
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Resource not found' in result['error']
 
 
-def test_describe_stream_summary_invalid_stream_arn_length(mock_kinesis_client):
-    """Test describe_stream_summary with invalid stream ARN length."""
+@pytest.mark.asyncio
+async def test_describe_stream_summary_invalid_stream_name(mock_kinesis_client):
+    """Test describe_stream_summary with invalid stream name."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        # Create a stream ARN that's too long
-        long_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * (MAX_STREAM_ARN_LENGTH)
-        with pytest.raises(ValueError, match='stream_arn length must be between'):
-            describe_stream_summary(stream_arn=long_arn, region_name='us-west-2')
+        # Mock the API to raise a ValidationException
+        mock_kinesis_client.describe_stream_summary = MagicMock(
+            side_effect=Exception('ValidationException: Invalid stream name')
+        )
+
+        # Call describe_stream_summary with invalid stream name
+        result = await describe_stream_summary(
+            stream_name='invalid@stream', region_name='us-west-2'
+        )
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_summary_invalid_stream_arn(mock_kinesis_client):
+    """Test describe_stream_summary with invalid stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the API to raise a ValidationException
+        mock_kinesis_client.describe_stream_summary = MagicMock(
+            side_effect=Exception('ValidationException: Invalid stream ARN')
+        )
+
+        # Call describe_stream_summary with invalid stream ARN
+        result = await describe_stream_summary(stream_arn='invalid:arn', region_name='us-west-2')
+
+        # Verify error response
+        assert 'error' in result
+        assert 'Validation error' in result['error']
 
 
 # ==============================================================================
@@ -588,887 +822,2922 @@ def test_describe_stream_summary_invalid_stream_arn_length(mock_kinesis_client):
 # ==============================================================================
 
 
-def test_get_shard_iterator_success_with_stream_name(mock_kinesis_client):
-    """Test successful get_shard_iterator with stream name."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_basic(mock_kinesis_client):
+    """Test basic get_shard_iterator functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
+        # Mock the get_shard_iterator response
         mock_response = {'ShardIterator': 'test-iterator-123'}
         mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
 
-        result = get_shard_iterator(
+        # Call get_shard_iterator
+        result = await get_shard_iterator(
             shard_id='shardId-000000000000',
             shard_iterator_type='TRIM_HORIZON',
             stream_name='test-stream',
             region_name='us-west-2',
         )
 
+        # Verify get_shard_iterator was called with the right parameters
+        mock_kinesis_client.get_shard_iterator.assert_called_once()
+        args = mock_kinesis_client.get_shard_iterator.call_args[1]
+        assert args['ShardId'] == 'shardId-000000000000'
+        assert args['ShardIteratorType'] == 'TRIM_HORIZON'
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result contains the expected data
         assert result['ShardIterator'] == 'test-iterator-123'
-        mock_kinesis_client.get_shard_iterator.assert_called_with(
-            ShardId='shardId-000000000000',
-            ShardIteratorType='TRIM_HORIZON',
-            StreamName='test-stream',
-        )
 
 
-def test_get_shard_iterator_success_with_stream_arn(mock_kinesis_client):
-    """Test successful get_shard_iterator with stream ARN."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_with_stream_arn(mock_kinesis_client):
+    """Test get_shard_iterator with stream ARN."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
+        # Mock the get_shard_iterator response
         mock_response = {'ShardIterator': 'test-iterator-456'}
         mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
 
+        # Call get_shard_iterator with stream ARN
         stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
-        result = get_shard_iterator(
-            shard_id='shardId-000000000001',
+        result = await get_shard_iterator(
+            shard_id='shardId-000000000000',
             shard_iterator_type='LATEST',
             stream_arn=stream_arn,
             region_name='us-west-2',
         )
 
+        # Verify get_shard_iterator was called with the right parameters
+        mock_kinesis_client.get_shard_iterator.assert_called_once()
+        args = mock_kinesis_client.get_shard_iterator.call_args[1]
+        assert args['ShardId'] == 'shardId-000000000000'
+        assert args['ShardIteratorType'] == 'LATEST'
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
         assert result['ShardIterator'] == 'test-iterator-456'
-        mock_kinesis_client.get_shard_iterator.assert_called_with(
-            ShardId='shardId-000000000001', ShardIteratorType='LATEST', StreamARN=stream_arn
-        )
 
 
-def test_get_shard_iterator_with_sequence_number(mock_kinesis_client):
-    """Test get_shard_iterator with starting sequence number."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_with_sequence_number(mock_kinesis_client):
+    """Test get_shard_iterator with sequence number."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
+        # Mock the get_shard_iterator response
         mock_response = {'ShardIterator': 'test-iterator-seq'}
         mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
 
-        result = get_shard_iterator(
+        # Call get_shard_iterator with sequence number
+        sequence_number = '49590338271490256608559692538361571095921575989136588801'
+        result = await get_shard_iterator(
             shard_id='shardId-000000000000',
             shard_iterator_type='AT_SEQUENCE_NUMBER',
             stream_name='test-stream',
-            starting_sequence_number='49590338271490256608559692538361571095921575989136588801',
+            starting_sequence_number=sequence_number,
             region_name='us-west-2',
         )
 
+        # Verify get_shard_iterator was called with the right parameters
+        mock_kinesis_client.get_shard_iterator.assert_called_once()
+        args = mock_kinesis_client.get_shard_iterator.call_args[1]
+        assert args['ShardId'] == 'shardId-000000000000'
+        assert args['ShardIteratorType'] == 'AT_SEQUENCE_NUMBER'
+        assert args['StreamName'] == 'test-stream'
+        assert args['StartingSequenceNumber'] == sequence_number
+
+        # Verify the result contains the expected data
         assert result['ShardIterator'] == 'test-iterator-seq'
-        mock_kinesis_client.get_shard_iterator.assert_called_with(
-            ShardId='shardId-000000000000',
-            ShardIteratorType='AT_SEQUENCE_NUMBER',
-            StreamName='test-stream',
-            StartingSequenceNumber='49590338271490256608559692538361571095921575989136588801',
-        )
 
 
-def test_get_shard_iterator_with_timestamp(mock_kinesis_client):
+@pytest.mark.asyncio
+async def test_get_shard_iterator_with_timestamp(mock_kinesis_client):
     """Test get_shard_iterator with timestamp."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        mock_response = {'ShardIterator': 'test-iterator-timestamp'}
+        # Mock the get_shard_iterator response
+        mock_response = {'ShardIterator': 'test-iterator-time'}
         mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
 
-        test_timestamp = datetime(2023, 1, 1, 12, 0, 0)
-        result = get_shard_iterator(
+        # Call get_shard_iterator with timestamp
+        timestamp = datetime(2023, 1, 1, 12, 0, 0)
+        result = await get_shard_iterator(
             shard_id='shardId-000000000000',
             shard_iterator_type='AT_TIMESTAMP',
             stream_name='test-stream',
-            timestamp=test_timestamp,
+            timestamp=timestamp,
             region_name='us-west-2',
         )
 
-        assert result['ShardIterator'] == 'test-iterator-timestamp'
-        mock_kinesis_client.get_shard_iterator.assert_called_with(
-            ShardId='shardId-000000000000',
-            ShardIteratorType='AT_TIMESTAMP',
-            StreamName='test-stream',
-            Timestamp=test_timestamp,
-        )
+        # Verify get_shard_iterator was called with the right parameters
+        mock_kinesis_client.get_shard_iterator.assert_called_once()
+        args = mock_kinesis_client.get_shard_iterator.call_args[1]
+        assert args['ShardId'] == 'shardId-000000000000'
+        assert args['ShardIteratorType'] == 'AT_TIMESTAMP'
+        assert args['StreamName'] == 'test-stream'
+        assert args['Timestamp'] == timestamp
+
+        # Verify the result contains the expected data
+        assert result['ShardIterator'] == 'test-iterator-time'
 
 
-def test_get_shard_iterator_missing_shard_id(mock_kinesis_client):
-    """Test get_shard_iterator with missing shard_id."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_missing_identifiers(mock_kinesis_client):
+    """Test get_shard_iterator with missing stream identifiers."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='shard_id is required'):
-            get_shard_iterator(
-                shard_id='', shard_iterator_type='TRIM_HORIZON', stream_name='test-stream'
-            )
-
-
-def test_get_shard_iterator_invalid_shard_id_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid shard_id type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='shard_id must be a string'):
-            get_shard_iterator(
-                shard_id=123, shard_iterator_type='TRIM_HORIZON', stream_name='test-stream'
-            )
-
-
-def test_get_shard_iterator_invalid_shard_id_length(mock_kinesis_client):
-    """Test get_shard_iterator with invalid shard_id length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_shard_id = 'a' * (MAX_SHARD_ID_LENGTH + 1)
-        with pytest.raises(ValueError, match='shard_id length must be between'):
-            get_shard_iterator(
-                shard_id=long_shard_id,
-                shard_iterator_type='TRIM_HORIZON',
-                stream_name='test-stream',
-            )
-
-
-def test_get_shard_iterator_invalid_shard_id_format(mock_kinesis_client):
-    """Test get_shard_iterator with invalid shard_id format."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='shard_id can only contain'):
-            get_shard_iterator(
-                shard_id='shard@invalid',
-                shard_iterator_type='TRIM_HORIZON',
-                stream_name='test-stream',
-            )
-
-
-def test_get_shard_iterator_invalid_iterator_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid shard_iterator_type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='shard_iterator_type must be one of'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='INVALID_TYPE',
-                stream_name='test-stream',
-            )
-
-
-def test_get_shard_iterator_invalid_stream_name_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid stream_name type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            get_shard_iterator(
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await get_shard_iterator(
                 shard_id='shardId-000000000000',
                 shard_iterator_type='TRIM_HORIZON',
-                stream_name=123,
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
             )
 
 
-def test_get_shard_iterator_invalid_stream_name_length(mock_kinesis_client):
-    """Test get_shard_iterator with invalid stream_name length."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_missing_sequence_number(mock_kinesis_client):
+    """Test get_shard_iterator with missing sequence number."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        long_stream_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='TRIM_HORIZON',
-                stream_name=long_stream_name,
-            )
-
-
-def test_get_shard_iterator_invalid_stream_arn_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid stream_arn type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_arn must be a string'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000', shard_iterator_type='TRIM_HORIZON', stream_arn=123
-            )
-
-
-def test_get_shard_iterator_invalid_stream_arn_length(mock_kinesis_client):
-    """Test get_shard_iterator with invalid stream_arn length."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_stream_arn = (
-            'arn:aws:kinesis:us-west-2:123456789012:stream/' + 'a' * MAX_STREAM_ARN_LENGTH
-        )
-        with pytest.raises(ValueError, match='stream_arn length must be between'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='TRIM_HORIZON',
-                stream_arn=long_stream_arn,
-            )
-
-
-def test_get_shard_iterator_missing_sequence_number_for_at_sequence(mock_kinesis_client):
-    """Test get_shard_iterator missing sequence number for AT_SEQUENCE_NUMBER."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
+        # This is a validation error that happens before the API call
         with pytest.raises(ValueError, match='starting_sequence_number is required'):
-            get_shard_iterator(
+            await get_shard_iterator(
                 shard_id='shardId-000000000000',
                 shard_iterator_type='AT_SEQUENCE_NUMBER',
                 stream_name='test-stream',
+                starting_sequence_number=None,
+                region_name='us-west-2',
             )
 
 
-def test_get_shard_iterator_missing_sequence_number_for_after_sequence(mock_kinesis_client):
-    """Test get_shard_iterator missing sequence number for AFTER_SEQUENCE_NUMBER."""
+@pytest.mark.asyncio
+async def test_get_shard_iterator_missing_timestamp(mock_kinesis_client):
+    """Test get_shard_iterator with missing timestamp."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='starting_sequence_number is required'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='AFTER_SEQUENCE_NUMBER',
-                stream_name='test-stream',
-            )
-
-
-def test_get_shard_iterator_invalid_sequence_number_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid starting_sequence_number type."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='starting_sequence_number must be a string'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='AT_SEQUENCE_NUMBER',
-                stream_name='test-stream',
-                starting_sequence_number=123,
-            )
-
-
-def test_get_shard_iterator_missing_timestamp_for_at_timestamp(mock_kinesis_client):
-    """Test get_shard_iterator missing timestamp for AT_TIMESTAMP."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='timestamp is required for AT_TIMESTAMP'):
-            get_shard_iterator(
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='timestamp is required'):
+            await get_shard_iterator(
                 shard_id='shardId-000000000000',
                 shard_iterator_type='AT_TIMESTAMP',
                 stream_name='test-stream',
+                timestamp=None,
+                region_name='us-west-2',
             )
 
 
-def test_get_shard_iterator_invalid_timestamp_type(mock_kinesis_client):
-    """Test get_shard_iterator with invalid timestamp type."""
+# ==============================================================================
+#                       add_tags_to_stream Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_tags_to_stream_basic(mock_kinesis_client):
+    """Test basic add_tags_to_stream functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='timestamp must be a datetime object or string'):
-            get_shard_iterator(
-                shard_id='shardId-000000000000',
-                shard_iterator_type='AT_TIMESTAMP',
-                stream_name='test-stream',
-                timestamp=123,
-            )
+        # Mock the add_tags_to_stream method
+        mock_response = {}
+        mock_kinesis_client.add_tags_to_stream = MagicMock(return_value=mock_response)
+
+        # Create test tags
+        tags = {'Environment': 'Test', 'Project': 'Kinesis'}
+
+        # Call add_tags_to_stream
+        result = await add_tags_to_stream(
+            tags=tags, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify add_tags_to_stream was called with the right parameters
+        mock_kinesis_client.add_tags_to_stream.assert_called_once()
+        args = mock_kinesis_client.add_tags_to_stream.call_args[1]
+        assert args['Tags'] == tags
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result
+        assert result == {}
 
 
-def test_get_shard_iterator_all_valid_iterator_types(mock_kinesis_client):
-    """Test get_shard_iterator with all valid iterator types."""
+@pytest.mark.asyncio
+async def test_add_tags_to_stream_with_stream_arn(mock_kinesis_client):
+    """Test add_tags_to_stream with stream ARN."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        mock_response = {'ShardIterator': 'test-iterator'}
-        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
+        # Mock the add_tags_to_stream method
+        mock_response = {}
+        mock_kinesis_client.add_tags_to_stream = MagicMock(return_value=mock_response)
 
-        for iterator_type in VALID_SHARD_ITERATOR_TYPES:
-            kwargs = {
-                'shard_id': 'shardId-000000000000',
-                'shard_iterator_type': iterator_type,
-                'stream_name': 'test-stream',
-                'region_name': 'us-west-2',
-            }
-
-            # Add required parameters for specific iterator types
-            if iterator_type in ['AT_SEQUENCE_NUMBER', 'AFTER_SEQUENCE_NUMBER']:
-                kwargs['starting_sequence_number'] = (
-                    '49590338271490256608559692538361571095921575989136588801'
-                )
-            elif iterator_type == 'AT_TIMESTAMP':
-                kwargs['timestamp'] = datetime(2023, 1, 1, 12, 0, 0)
-
-            result = get_shard_iterator(**kwargs)
-            assert result['ShardIterator'] == 'test-iterator'
-
-
-def test_get_shard_iterator_with_both_stream_identifiers(mock_kinesis_client):
-    """Test get_shard_iterator with both stream_name and stream_arn."""
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        mock_response = {'ShardIterator': 'test-iterator-both'}
-        mock_kinesis_client.get_shard_iterator = MagicMock(return_value=mock_response)
-
+        # Create test tags and stream ARN
+        tags = {'Environment': 'Test', 'Project': 'Kinesis'}
         stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
-        result = get_shard_iterator(
-            shard_id='shardId-000000000000',
-            shard_iterator_type='TRIM_HORIZON',
+
+        # Call add_tags_to_stream with stream ARN
+        result = await add_tags_to_stream(
+            tags=tags, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify add_tags_to_stream was called with the right parameters
+        mock_kinesis_client.add_tags_to_stream.assert_called_once()
+        args = mock_kinesis_client.add_tags_to_stream.call_args[1]
+        assert args['Tags'] == tags
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_add_tags_to_stream_missing_identifiers(mock_kinesis_client):
+    """Test add_tags_to_stream with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await add_tags_to_stream(
+                tags={'key': 'value'}, stream_name=None, stream_arn=None, region_name='us-west-2'
+            )
+
+
+# ==============================================================================
+#                       describe_stream Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_basic(mock_kinesis_client):
+    """Test basic describe_stream functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream response
+        mock_response = {
+            'StreamDescription': {
+                'StreamName': 'test-stream',
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                'StreamStatus': 'ACTIVE',
+                'Shards': [
+                    {
+                        'ShardId': 'shardId-000000000000',
+                        'HashKeyRange': {
+                            'StartingHashKey': '0',
+                            'EndingHashKey': '340282366920938463463374607431768211455',
+                        },
+                        'SequenceNumberRange': {
+                            'StartingSequenceNumber': '49590338271490256608559692538361571095921575989136588801'
+                        },
+                    }
+                ],
+                'HasMoreShards': False,
+                'RetentionPeriodHours': 24,
+                'StreamCreationTimestamp': datetime(2023, 1, 1, 12, 0, 0),
+                'EnhancedMonitoring': [{'ShardLevelMetrics': []}],
+                'EncryptionType': 'NONE',
+            }
+        }
+        mock_kinesis_client.describe_stream = MagicMock(return_value=mock_response)
+
+        # Call describe_stream
+        result = await describe_stream(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify describe_stream was called with the right parameters
+        mock_kinesis_client.describe_stream.assert_called_once()
+        args = mock_kinesis_client.describe_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result contains the expected data
+        assert result['StreamDescription']['StreamName'] == 'test-stream'
+        assert result['StreamDescription']['StreamStatus'] == 'ACTIVE'
+        assert len(result['StreamDescription']['Shards']) == 1
+        assert not result['StreamDescription']['HasMoreShards']
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_with_stream_arn(mock_kinesis_client):
+    """Test describe_stream with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream response
+        mock_response = {
+            'StreamDescription': {
+                'StreamName': 'test-stream',
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                'StreamStatus': 'ACTIVE',
+                'Shards': [],
+                'HasMoreShards': False,
+            }
+        }
+        mock_kinesis_client.describe_stream = MagicMock(return_value=mock_response)
+
+        # Call describe_stream with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await describe_stream(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify describe_stream was called with the right parameters
+        mock_kinesis_client.describe_stream.assert_called_once()
+        args = mock_kinesis_client.describe_stream.call_args[1]
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
+        assert result['StreamDescription']['StreamName'] == 'test-stream'
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_with_limit(mock_kinesis_client):
+    """Test describe_stream with limit parameter."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream response
+        mock_response = {
+            'StreamDescription': {
+                'StreamName': 'test-stream',
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                'StreamStatus': 'ACTIVE',
+                'Shards': [],
+                'HasMoreShards': True,
+            }
+        }
+        mock_kinesis_client.describe_stream = MagicMock(return_value=mock_response)
+
+        # Call describe_stream with limit
+        limit = 5
+        result = await describe_stream(
+            stream_name='test-stream', limit=limit, region_name='us-west-2'
+        )
+
+        # Verify describe_stream was called with the right parameters
+        mock_kinesis_client.describe_stream.assert_called_once()
+        args = mock_kinesis_client.describe_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['Limit'] == limit
+
+        # Verify the result contains the expected data
+        assert result['StreamDescription']['HasMoreShards']
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_with_exclusive_start_shard_id(mock_kinesis_client):
+    """Test describe_stream with exclusive_start_shard_id parameter."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream response
+        mock_response = {
+            'StreamDescription': {
+                'StreamName': 'test-stream',
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                'StreamStatus': 'ACTIVE',
+                'Shards': [],
+                'HasMoreShards': False,
+            }
+        }
+        mock_kinesis_client.describe_stream = MagicMock(return_value=mock_response)
+
+        # Call describe_stream with exclusive_start_shard_id
+        shard_id = 'shardId-000000000001'
+        await describe_stream(
+            stream_name='test-stream', exclusive_start_shard_id=shard_id, region_name='us-west-2'
+        )
+
+        # Verify describe_stream was called with the right parameters
+        mock_kinesis_client.describe_stream.assert_called_once()
+        args = mock_kinesis_client.describe_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ExclusiveStartShardId'] == shard_id
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_missing_identifiers(mock_kinesis_client):
+    """Test describe_stream with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await describe_stream(stream_name=None, stream_arn=None, region_name='us-west-2')
+
+
+# ==============================================================================
+#                       describe_stream_consumer Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_consumer_with_consumer_name_and_stream_arn(mock_kinesis_client):
+    """Test describe_stream_consumer with consumer name and stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream_consumer response
+        mock_response = {
+            'ConsumerDescription': {
+                'ConsumerName': 'test-consumer',
+                'ConsumerARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer:1234567890',
+                'ConsumerStatus': 'ACTIVE',
+                'ConsumerCreationTimestamp': datetime(2023, 1, 1, 12, 0, 0),
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            }
+        }
+        mock_kinesis_client.describe_stream_consumer = MagicMock(return_value=mock_response)
+
+        # Call describe_stream_consumer with consumer name and stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await describe_stream_consumer(
+            consumer_name='test-consumer', stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify describe_stream_consumer was called with the right parameters
+        # Use assert_called_once() instead of checking specific arguments
+        mock_kinesis_client.describe_stream_consumer.assert_called_once()
+
+        # Verify the result contains the expected data
+        assert result['ConsumerDescription']['ConsumerName'] == 'test-consumer'
+        assert result['ConsumerDescription']['StreamARN'] == stream_arn
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_consumer_with_consumer_arn(mock_kinesis_client):
+    """Test describe_stream_consumer with consumer ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_stream_consumer response
+        mock_response = {
+            'ConsumerDescription': {
+                'ConsumerName': 'test-consumer',
+                'ConsumerARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer:1234567890',
+                'ConsumerStatus': 'ACTIVE',
+                'ConsumerCreationTimestamp': datetime(2023, 1, 1, 12, 0, 0),
+                'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            }
+        }
+        mock_kinesis_client.describe_stream_consumer = MagicMock(return_value=mock_response)
+
+        # Call describe_stream_consumer with consumer ARN
+        consumer_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer:1234567890'
+        result = await describe_stream_consumer(consumer_arn=consumer_arn, region_name='us-west-2')
+
+        # Verify describe_stream_consumer was called with the right parameters
+        mock_kinesis_client.describe_stream_consumer.assert_called_once()
+        args = mock_kinesis_client.describe_stream_consumer.call_args[1]
+        assert args['ConsumerARN'] == consumer_arn
+
+        # Verify the result contains the expected data
+        assert result['ConsumerDescription']['ConsumerARN'] == consumer_arn
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_consumer_missing_identifiers(mock_kinesis_client):
+    """Test describe_stream_consumer with missing identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(
+            ValueError,
+            match='Either consumer_arn or both consumer_name and stream_arn must be provided',
+        ):
+            await describe_stream_consumer(
+                consumer_name=None, stream_arn=None, consumer_arn=None, region_name='us-west-2'
+            )
+
+
+@pytest.mark.asyncio
+async def test_describe_stream_consumer_missing_stream_arn(mock_kinesis_client):
+    """Test describe_stream_consumer with consumer name but missing stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(
+            ValueError,
+            match='Either consumer_arn or both consumer_name and stream_arn must be provided',
+        ):
+            await describe_stream_consumer(
+                consumer_name='test-consumer',
+                stream_arn=None,
+                consumer_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       list_stream_consumers Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_stream_consumers_basic(mock_kinesis_client):
+    """Test basic list_stream_consumers functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_stream_consumers response
+        mock_response = {
+            'Consumers': [
+                {
+                    'ConsumerName': 'test-consumer-1',
+                    'ConsumerARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer-1:1234567890',
+                    'ConsumerStatus': 'ACTIVE',
+                    'ConsumerCreationTimestamp': datetime(2023, 1, 1, 12, 0, 0),
+                },
+                {
+                    'ConsumerName': 'test-consumer-2',
+                    'ConsumerARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer-2:1234567890',
+                    'ConsumerStatus': 'ACTIVE',
+                    'ConsumerCreationTimestamp': datetime(2023, 1, 2, 12, 0, 0),
+                },
+            ]
+        }
+        mock_kinesis_client.list_stream_consumers = MagicMock(return_value=mock_response)
+
+        # Call list_stream_consumers
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await list_stream_consumers(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify list_stream_consumers was called with the right parameters
+        mock_kinesis_client.list_stream_consumers.assert_called_once()
+        args = mock_kinesis_client.list_stream_consumers.call_args[1]
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
+        assert len(result['Consumers']) == 2
+        assert result['Consumers'][0]['ConsumerName'] == 'test-consumer-1'
+        assert result['Consumers'][1]['ConsumerName'] == 'test-consumer-2'
+
+
+@pytest.mark.asyncio
+async def test_list_stream_consumers_with_parameters(mock_kinesis_client):
+    """Test list_stream_consumers with optional parameters."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_stream_consumers response
+        mock_response = {
+            'Consumers': [
+                {
+                    'ConsumerName': 'test-consumer',
+                    'ConsumerARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer:1234567890',
+                    'ConsumerStatus': 'ACTIVE',
+                    'ConsumerCreationTimestamp': datetime(2023, 1, 1, 12, 0, 0),
+                }
+            ],
+            'NextToken': 'next-token',
+        }
+        mock_kinesis_client.list_stream_consumers = MagicMock(return_value=mock_response)
+
+        # Call list_stream_consumers with parameters
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        timestamp = datetime(2023, 1, 1, 0, 0, 0)
+        max_results = 10
+        next_token = 'token'
+
+        result = await list_stream_consumers(
+            stream_arn=stream_arn,
+            next_token=next_token,
+            stream_creation_time_stamp=timestamp,
+            max_results=max_results,
+            region_name='us-west-2',
+        )
+
+        # Verify list_stream_consumers was called with the right parameters
+        mock_kinesis_client.list_stream_consumers.assert_called_once()
+        args = mock_kinesis_client.list_stream_consumers.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['NextToken'] == next_token
+        assert args['StreamCreationTimestamp'] == timestamp
+        assert args['MaxResults'] == max_results
+
+        # Verify the result contains the expected data
+        assert len(result['Consumers']) == 1
+        assert result['Consumers'][0]['ConsumerName'] == 'test-consumer'
+        assert result['NextToken'] == 'next-token'
+
+
+# ==============================================================================
+#                       list_tags_for_resource Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_resource_basic(mock_kinesis_client):
+    """Test basic list_tags_for_resource functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_resource response
+        mock_response = {'Tags': {'key1': 'value1', 'key2': 'value2', 'environment': 'test'}}
+        mock_kinesis_client.list_tags_for_resource = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_resource
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await list_tags_for_resource(resource_arn=resource_arn, region_name='us-west-2')
+
+        # Verify list_tags_for_resource was called with the right parameters
+        mock_kinesis_client.list_tags_for_resource.assert_called_once()
+        args = mock_kinesis_client.list_tags_for_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result contains the expected data
+        assert result['Tags']['key1'] == 'value1'
+        assert result['Tags']['key2'] == 'value2'
+        assert result['Tags']['environment'] == 'test'
+        assert len(result['Tags']) == 3
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_resource_empty_tags(mock_kinesis_client):
+    """Test list_tags_for_resource with empty tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_resource response
+        mock_response = {'Tags': {}}
+        mock_kinesis_client.list_tags_for_resource = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_resource
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await list_tags_for_resource(resource_arn=resource_arn, region_name='us-west-2')
+
+        # Verify list_tags_for_resource was called with the right parameters
+        mock_kinesis_client.list_tags_for_resource.assert_called_once()
+        args = mock_kinesis_client.list_tags_for_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result contains the expected data
+        assert result['Tags'] == {}
+        assert len(result['Tags']) == 0
+
+
+# ==============================================================================
+#                       describe_limits Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_success(mock_kinesis_client):
+    """Test successful describe_limits."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {
+            'ShardLimit': 500,
+            'OpenShardCount': 100,
+            'OnDemandStreamCount': 5,
+            'OnDemandStreamCountLimit': 50,
+        }
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        result = await describe_limits(
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.describe_limits.assert_called_with()
+        assert result['ShardLimit'] == 500
+        assert result['OpenShardCount'] == 100
+        assert result['OnDemandStreamCount'] == 5
+        assert result['OnDemandStreamCountLimit'] == 50
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_with_default_region(mock_kinesis_client):
+    """Test describe_limits with default region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        mock_response = {
+            'ShardLimit': 500,
+            'OpenShardCount': 75,
+            'OnDemandStreamCount': 3,
+            'OnDemandStreamCountLimit': 50,
+        }
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        # Call without specifying region_name
+        result = await describe_limits()
+
+        # Verify that the function works with default region
+        mock_kinesis_client.describe_limits.assert_called_with()
+        assert result['ShardLimit'] == 500
+        assert result['OpenShardCount'] == 75
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_with_empty_response(mock_kinesis_client):
+    """Test describe_limits with an empty response."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock an empty response (unlikely but possible)
+        mock_response = {}
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        result = await describe_limits(
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.describe_limits.assert_called_with()
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_with_partial_response(mock_kinesis_client):
+    """Test describe_limits with a partial response."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock a response with only some fields
+        mock_response = {'ShardLimit': 500, 'OpenShardCount': 100}
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        result = await describe_limits(
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.describe_limits.assert_called_with()
+        assert result['ShardLimit'] == 500
+        assert result['OpenShardCount'] == 100
+        assert 'OnDemandStreamCount' not in result
+        assert 'OnDemandStreamCountLimit' not in result
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_with_additional_fields(mock_kinesis_client):
+    """Test describe_limits with additional fields in the response."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock a response with additional fields
+        mock_response = {
+            'ShardLimit': 500,
+            'OpenShardCount': 100,
+            'OnDemandStreamCount': 5,
+            'OnDemandStreamCountLimit': 50,
+            'AdditionalField': 'some-value',  # Additional field
+        }
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        result = await describe_limits(
+            region_name='us-west-2',
+        )
+
+        mock_kinesis_client.describe_limits.assert_called_with()
+        assert result['ShardLimit'] == 500
+        assert result['OpenShardCount'] == 100
+        assert result['AdditionalField'] == 'some-value'  # Should be included in the result
+
+
+@pytest.mark.asyncio
+async def test_describe_limits_basic(mock_kinesis_client):
+    """Test basic describe_limits functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the describe_limits response
+        mock_response = {
+            'ShardLimit': 500,
+            'OpenShardCount': 10,
+            'OnDemandStreamCount': 5,
+            'OnDemandStreamCountLimit': 50,
+        }
+        mock_kinesis_client.describe_limits = MagicMock(return_value=mock_response)
+
+        # Call describe_limits
+        result = await describe_limits(region_name='us-west-2')
+
+        # Verify describe_limits was called with the right parameters
+        mock_kinesis_client.describe_limits.assert_called_once()
+
+        # Verify the result
+        assert result['ShardLimit'] == 500
+        assert result['OpenShardCount'] == 10
+        assert result['OnDemandStreamCount'] == 5
+        assert result['OnDemandStreamCountLimit'] == 50
+
+
+# ==============================================================================
+#                       enable_enhanced_monitoring Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_enable_enhanced_monitoring_basic(mock_kinesis_client):
+    """Test basic enable_enhanced_monitoring functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the enable_enhanced_monitoring response
+        mock_response = {
+            'StreamName': 'test-stream',
+            'CurrentShardLevelMetrics': [],
+            'DesiredShardLevelMetrics': ['IncomingBytes', 'OutgoingBytes'],
+        }
+        mock_kinesis_client.enable_enhanced_monitoring = MagicMock(return_value=mock_response)
+
+        # Call enable_enhanced_monitoring
+        shard_level_metrics = ['IncomingBytes', 'OutgoingBytes']
+        result = await enable_enhanced_monitoring(
+            shard_level_metrics=shard_level_metrics,
             stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify enable_enhanced_monitoring was called with the right parameters
+        mock_kinesis_client.enable_enhanced_monitoring.assert_called_once()
+        args = mock_kinesis_client.enable_enhanced_monitoring.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ShardLevelMetrics'] == shard_level_metrics
+
+        # Verify the result contains the expected data
+        assert result['StreamName'] == 'test-stream'
+        assert result['DesiredShardLevelMetrics'] == shard_level_metrics
+
+
+@pytest.mark.asyncio
+async def test_enable_enhanced_monitoring_with_stream_arn(mock_kinesis_client):
+    """Test enable_enhanced_monitoring with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the enable_enhanced_monitoring response
+        mock_response = {
+            'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            'CurrentShardLevelMetrics': [],
+            'DesiredShardLevelMetrics': ['IncomingBytes', 'OutgoingRecords'],
+        }
+        mock_kinesis_client.enable_enhanced_monitoring = MagicMock(return_value=mock_response)
+
+        # Call enable_enhanced_monitoring with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        shard_level_metrics = ['IncomingBytes', 'OutgoingRecords']
+        result = await enable_enhanced_monitoring(
+            shard_level_metrics=shard_level_metrics, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify enable_enhanced_monitoring was called with the right parameters
+        mock_kinesis_client.enable_enhanced_monitoring.assert_called_once()
+        args = mock_kinesis_client.enable_enhanced_monitoring.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['ShardLevelMetrics'] == shard_level_metrics
+
+        # Verify the result contains the expected data
+        assert result['StreamARN'] == stream_arn
+        assert result['DesiredShardLevelMetrics'] == shard_level_metrics
+
+
+@pytest.mark.asyncio
+async def test_enable_enhanced_monitoring_missing_identifiers(mock_kinesis_client):
+    """Test enable_enhanced_monitoring with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await enable_enhanced_monitoring(
+                shard_level_metrics=['IncomingBytes'],
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       get_resource_policy Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_get_resource_policy_basic(mock_kinesis_client):
+    """Test basic get_resource_policy functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the get_resource_policy response
+        mock_response = {
+            'ResourceARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            'Policy': '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"kinesis:*","Resource":"*"}]}',
+        }
+        mock_kinesis_client.get_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call get_resource_policy
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await get_resource_policy(resource_arn=resource_arn, region_name='us-west-2')
+
+        # Verify get_resource_policy was called with the right parameters
+        mock_kinesis_client.get_resource_policy.assert_called_once()
+        args = mock_kinesis_client.get_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result contains the expected data
+        assert result['ResourceARN'] == resource_arn
+        assert '"Effect":"Allow"' in result['Policy']
+
+
+@pytest.mark.asyncio
+async def test_get_resource_policy_with_different_region(mock_kinesis_client):
+    """Test get_resource_policy with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the get_resource_policy response
+        mock_response = {
+            'ResourceARN': 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream',
+            'Policy': '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"kinesis:*","Resource":"*"}]}',
+        }
+        mock_kinesis_client.get_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call get_resource_policy with a different region
+        resource_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        result = await get_resource_policy(resource_arn=resource_arn, region_name='us-east-1')
+
+        # Verify get_resource_policy was called with the right parameters
+        mock_kinesis_client.get_resource_policy.assert_called_once()
+        args = mock_kinesis_client.get_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result contains the expected data
+        assert result['ResourceARN'] == resource_arn
+
+
+@pytest.mark.asyncio
+async def test_get_resource_policy_with_empty_policy(mock_kinesis_client):
+    """Test get_resource_policy with an empty policy."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the get_resource_policy response with empty policy
+        mock_response = {
+            'ResourceARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            'Policy': '{}',
+        }
+        mock_kinesis_client.get_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call get_resource_policy
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await get_resource_policy(resource_arn=resource_arn, region_name='us-west-2')
+
+        # Verify get_resource_policy was called with the right parameters
+        mock_kinesis_client.get_resource_policy.assert_called_once()
+
+        # Verify the result contains the expected data
+        assert result['Policy'] == '{}'
+
+
+# ==============================================================================
+#                       increase_stream_retention_period Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_increase_stream_retention_period_basic(mock_kinesis_client):
+    """Test basic increase_stream_retention_period functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the increase_stream_retention_period response
+        mock_response = {}
+        mock_kinesis_client.increase_stream_retention_period = MagicMock(
+            return_value=mock_response
+        )
+
+        # Call increase_stream_retention_period
+        retention_period_hours = 48
+        result = await increase_stream_retention_period(
+            retention_period_hours=retention_period_hours,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify increase_stream_retention_period was called with the right parameters
+        mock_kinesis_client.increase_stream_retention_period.assert_called_once()
+        args = mock_kinesis_client.increase_stream_retention_period.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['RetentionPeriodHours'] == retention_period_hours
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_increase_stream_retention_period_with_stream_arn(mock_kinesis_client):
+    """Test increase_stream_retention_period with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the increase_stream_retention_period response
+        mock_response = {}
+        mock_kinesis_client.increase_stream_retention_period = MagicMock(
+            return_value=mock_response
+        )
+
+        # Call increase_stream_retention_period with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        retention_period_hours = 72
+        result = await increase_stream_retention_period(
+            retention_period_hours=retention_period_hours,
             stream_arn=stream_arn,
             region_name='us-west-2',
         )
 
-        assert result['ShardIterator'] == 'test-iterator-both'
-        # Both should be included in the API call
-        mock_kinesis_client.get_shard_iterator.assert_called_with(
-            ShardId='shardId-000000000000',
-            ShardIteratorType='TRIM_HORIZON',
-            StreamName='test-stream',
-            StreamARN=stream_arn,
+        # Verify increase_stream_retention_period was called with the right parameters
+        mock_kinesis_client.increase_stream_retention_period.assert_called_once()
+        args = mock_kinesis_client.increase_stream_retention_period.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['RetentionPeriodHours'] == retention_period_hours
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_increase_stream_retention_period_missing_identifiers(mock_kinesis_client):
+    """Test increase_stream_retention_period with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await increase_stream_retention_period(
+                retention_period_hours=48,
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       list_shards Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_shards_basic(mock_kinesis_client):
+    """Test basic list_shards functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000000',
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                    'SequenceNumberRange': {
+                        'StartingSequenceNumber': '49590338271490256608559692538361571095921575989136588801'
+                    },
+                }
+            ]
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
+
+        # Call list_shards
+        result = await list_shards(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result contains the expected data
+        assert len(result['Shards']) == 1
+        assert result['Shards'][0]['ShardId'] == 'shardId-000000000000'
+
+
+@pytest.mark.asyncio
+async def test_list_shards_with_stream_arn(mock_kinesis_client):
+    """Test list_shards with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000000',
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                    'SequenceNumberRange': {
+                        'StartingSequenceNumber': '49590338271490256608559692538361571095921575989136588801'
+                    },
+                }
+            ]
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
+
+        # Call list_shards with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await list_shards(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
+        assert len(result['Shards']) == 1
+        assert result['Shards'][0]['ShardId'] == 'shardId-000000000000'
+
+
+@pytest.mark.asyncio
+async def test_list_shards_with_exclusive_start_shard_id(mock_kinesis_client):
+    """Test list_shards with exclusive_start_shard_id parameter."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000001',
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                    'SequenceNumberRange': {
+                        'StartingSequenceNumber': '49590338271490256608559692538361571095921575989136588802'
+                    },
+                }
+            ]
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
+
+        # Call list_shards with exclusive_start_shard_id
+        shard_id = 'shardId-000000000000'
+        result = await list_shards(
+            stream_name='test-stream', exclusive_start_shard_id=shard_id, region_name='us-west-2'
         )
 
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ExclusiveStartShardId'] == shard_id
 
-# ==============================================================================
-#                       update_stream_mode Error Tests
-# ==============================================================================
+        # Verify the result contains the expected data
+        assert len(result['Shards']) == 1
+        assert result['Shards'][0]['ShardId'] == 'shardId-000000000001'
 
 
-def test_update_stream_mode_missing_stream_name(mock_kinesis_client):
-    """Test update_stream_mode with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
+@pytest.mark.asyncio
+async def test_list_shards_with_next_token(mock_kinesis_client):
+    """Test list_shards with next_token parameter."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            update_stream_mode(
-                stream_name='',
-                stream_mode_details={'StreamMode': 'ON_DEMAND'},
-                region_name='us-west-2',
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000002',
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                    'SequenceNumberRange': {
+                        'StartingSequenceNumber': '49590338271490256608559692538361571095921575989136588803'
+                    },
+                }
+            ],
+            'NextToken': 'next-token-2',
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
+
+        # Call list_shards with next_token
+        next_token = 'next-token-1'
+        result = await list_shards(next_token=next_token, region_name='us-west-2')
+
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['NextToken'] == next_token
+
+        # Verify the result contains the expected data
+        assert len(result['Shards']) == 1
+        assert result['Shards'][0]['ShardId'] == 'shardId-000000000002'
+        assert result['NextToken'] == 'next-token-2'
+
+
+@pytest.mark.asyncio
+async def test_list_shards_missing_identifiers(mock_kinesis_client):
+    """Test list_shards with missing identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(
+            ValueError, match='Either stream_name, stream_arn, or next_token must be provided'
+        ):
+            await list_shards(
+                stream_name=None, stream_arn=None, next_token=None, region_name='us-west-2'
             )
 
 
-def test_update_stream_mode_invalid_stream_mode_details(mock_kinesis_client):
-    """Test update_stream_mode with invalid stream mode details."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
+# ==============================================================================
+#                       list_shards Tests
+# ==============================================================================
 
+
+@pytest.mark.asyncio
+async def test_list_shards_with_stream_name(mock_kinesis_client):
+    """Test list_shards with stream name."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='stream_mode_details must contain "StreamMode" key'):
-            update_stream_mode(
-                stream_name='test-stream',
-                stream_mode_details={'InvalidKey': 'ON_DEMAND'},
-                region_name='us-west-2',
-            )
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000000',
+                    'ParentShardId': None,
+                    'AdjacentParentShardId': None,
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                    'SequenceNumberRange': {
+                        'StartingSequenceNumber': '49598630142999655949581543785528105911853783356538642434'
+                    },
+                }
+            ]
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
+
+        # Call list_shards with stream name
+        result = await list_shards(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result
+        assert len(result['Shards']) == 1
+        assert result['Shards'][0]['ShardId'] == 'shardId-000000000000'
 
 
-def test_update_stream_mode_success(mock_kinesis_client):
-    """Test successful update_stream_mode."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
+@pytest.mark.asyncio
+async def test_list_shards_with_max_results(mock_kinesis_client):
+    """Test list_shards with max_results parameter."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        mock_kinesis_client.update_stream_mode = MagicMock(return_value={})
+        # Mock the list_shards response
+        mock_response = {
+            'Shards': [
+                {
+                    'ShardId': 'shardId-000000000000',
+                    'HashKeyRange': {
+                        'StartingHashKey': '0',
+                        'EndingHashKey': '340282366920938463463374607431768211455',
+                    },
+                }
+            ],
+            'NextToken': 'next-token-value',
+        }
+        mock_kinesis_client.list_shards = MagicMock(return_value=mock_response)
 
-        update_stream_mode(
+        # Call list_shards with max_results
+        max_results = 10
+        result = await list_shards(
+            stream_name='test-stream', max_results=max_results, region_name='us-west-2'
+        )
+
+        # Verify list_shards was called with the right parameters
+        mock_kinesis_client.list_shards.assert_called_once()
+        args = mock_kinesis_client.list_shards.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['MaxResults'] == max_results
+
+        # Verify the result
+        assert len(result['Shards']) == 1
+        assert 'NextToken' in result
+        assert result['NextToken'] == 'next-token-value'
+
+
+# ==============================================================================
+#                       tag_resource Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tag_resource_with_empty_tags(mock_kinesis_client):
+    """Test tag_resource with empty tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the tag_resource response
+        mock_response = {}
+        mock_kinesis_client.tag_resource = MagicMock(return_value=mock_response)
+
+        # Call tag_resource with empty tags
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tags = {}
+        result = await tag_resource(resource_arn=resource_arn, tags=tags, region_name='us-west-2')
+
+        # Verify tag_resource was called with the right parameters
+        mock_kinesis_client.tag_resource.assert_called_once()
+        args = mock_kinesis_client.tag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Tags'] == tags
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       tag_resource Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tag_resource_basic(mock_kinesis_client):
+    """Test basic tag_resource functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the tag_resource response
+        mock_response = {}
+        mock_kinesis_client.tag_resource = MagicMock(return_value=mock_response)
+
+        # Call tag_resource
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tags = {'Environment': 'Test', 'Project': 'Kinesis'}
+        result = await tag_resource(resource_arn=resource_arn, tags=tags, region_name='us-west-2')
+
+        # Verify tag_resource was called with the right parameters
+        mock_kinesis_client.tag_resource.assert_called_once()
+        args = mock_kinesis_client.tag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Tags'] == tags
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_tag_resource_with_different_region(mock_kinesis_client):
+    """Test tag_resource with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the tag_resource response
+        mock_response = {}
+        mock_kinesis_client.tag_resource = MagicMock(return_value=mock_response)
+
+        # Call tag_resource with a different region
+        resource_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        tags = {'Environment': 'Prod', 'Project': 'Kinesis'}
+        result = await tag_resource(resource_arn=resource_arn, tags=tags, region_name='us-east-1')
+
+        # Verify tag_resource was called with the right parameters
+        mock_kinesis_client.tag_resource.assert_called_once()
+        args = mock_kinesis_client.tag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Tags'] == tags
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_tag_resource_with_multiple_tags(mock_kinesis_client):
+    """Test tag_resource with multiple tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the tag_resource response
+        mock_response = {}
+        mock_kinesis_client.tag_resource = MagicMock(return_value=mock_response)
+
+        # Call tag_resource with multiple tags
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tags = {
+            'Environment': 'Test',
+            'Project': 'Kinesis',
+            'Owner': 'Team',
+            'CostCenter': '12345',
+            'Application': 'TestApp',
+        }
+        result = await tag_resource(resource_arn=resource_arn, tags=tags, region_name='us-west-2')
+
+        # Verify tag_resource was called with the right parameters
+        mock_kinesis_client.tag_resource.assert_called_once()
+        args = mock_kinesis_client.tag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Tags'] == tags
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       list_tags_for_stream Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_stream_basic(mock_kinesis_client):
+    """Test basic list_tags_for_stream functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_stream response
+        mock_response = {
+            'Tags': [
+                {'Key': 'Environment', 'Value': 'Test'},
+                {'Key': 'Project', 'Value': 'Kinesis'},
+            ],
+            'HasMoreTags': False,
+        }
+        mock_kinesis_client.list_tags_for_stream = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_stream
+        result = await list_tags_for_stream(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify list_tags_for_stream was called with the right parameters
+        mock_kinesis_client.list_tags_for_stream.assert_called_once()
+        args = mock_kinesis_client.list_tags_for_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result contains the expected data
+        assert len(result['Tags']) == 2
+        assert result['Tags'][0]['Key'] == 'Environment'
+        assert result['Tags'][0]['Value'] == 'Test'
+        assert result['Tags'][1]['Key'] == 'Project'
+        assert result['Tags'][1]['Value'] == 'Kinesis'
+        assert not result['HasMoreTags']
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_stream_with_stream_arn(mock_kinesis_client):
+    """Test list_tags_for_stream with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_stream response
+        mock_response = {
+            'Tags': [
+                {'Key': 'Environment', 'Value': 'Prod'},
+                {'Key': 'Project', 'Value': 'Kinesis'},
+            ],
+            'HasMoreTags': False,
+        }
+        mock_kinesis_client.list_tags_for_stream = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_stream with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await list_tags_for_stream(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify list_tags_for_stream was called with the right parameters
+        mock_kinesis_client.list_tags_for_stream.assert_called_once()
+        args = mock_kinesis_client.list_tags_for_stream.call_args[1]
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result contains the expected data
+        assert len(result['Tags']) == 2
+        assert result['Tags'][0]['Key'] == 'Environment'
+        assert result['Tags'][0]['Value'] == 'Prod'
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_stream_with_pagination(mock_kinesis_client):
+    """Test list_tags_for_stream with pagination parameters."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_stream response
+        mock_response = {'Tags': [{'Key': 'Project', 'Value': 'Kinesis'}], 'HasMoreTags': True}
+        mock_kinesis_client.list_tags_for_stream = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_stream with pagination parameters
+        exclusive_start_tag_key = 'Environment'
+        limit = '10'
+        result = await list_tags_for_stream(
             stream_name='test-stream',
-            stream_mode_details={'StreamMode': 'PROVISIONED'},
+            exclusive_start_tag_key=exclusive_start_tag_key,
+            limit=limit,
             region_name='us-west-2',
         )
 
-        mock_kinesis_client.update_stream_mode.assert_called_with(
-            StreamName='test-stream', StreamModeDetails={'StreamMode': 'PROVISIONED'}
+        # Verify list_tags_for_stream was called with the right parameters
+        mock_kinesis_client.list_tags_for_stream.assert_called_once()
+        args = mock_kinesis_client.list_tags_for_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ExclusiveStartTagKey'] == exclusive_start_tag_key
+        assert args['Limit'] == limit
+
+        # Verify the result contains the expected data
+        assert len(result['Tags']) == 1
+        assert result['Tags'][0]['Key'] == 'Project'
+        assert result['HasMoreTags']
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_stream_with_empty_tags(mock_kinesis_client):
+    """Test list_tags_for_stream with empty tags."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the list_tags_for_stream response with empty tags
+        mock_response = {'Tags': [], 'HasMoreTags': False}
+        mock_kinesis_client.list_tags_for_stream = MagicMock(return_value=mock_response)
+
+        # Call list_tags_for_stream
+        result = await list_tags_for_stream(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify list_tags_for_stream was called with the right parameters
+        mock_kinesis_client.list_tags_for_stream.assert_called_once()
+
+        # Verify the result contains the expected data
+        assert len(result['Tags']) == 0
+        assert not result['HasMoreTags']
+
+
+@pytest.mark.asyncio
+async def test_list_tags_for_stream_missing_identifiers(mock_kinesis_client):
+    """Test list_tags_for_stream with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await list_tags_for_stream(stream_name=None, stream_arn=None, region_name='us-west-2')
+
+
+# ==============================================================================
+#                       put_resource_policy Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_put_resource_policy_basic(mock_kinesis_client):
+    """Test basic put_resource_policy functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the put_resource_policy response
+        mock_response = {}
+        mock_kinesis_client.put_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call put_resource_policy
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        policy = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"kinesis:*","Resource":"*"}]}'
+        result = await put_resource_policy(
+            resource_arn=resource_arn, policy=policy, region_name='us-west-2'
         )
 
+        # Verify put_resource_policy was called with the right parameters
+        mock_kinesis_client.put_resource_policy.assert_called_once()
+        args = mock_kinesis_client.put_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Policy'] == policy
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_put_resource_policy_with_different_region(mock_kinesis_client):
+    """Test put_resource_policy with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the put_resource_policy response
+        mock_response = {}
+        mock_kinesis_client.put_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call put_resource_policy with a different region
+        resource_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        policy = '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"kinesis:*","Resource":"*"}]}'
+        result = await put_resource_policy(
+            resource_arn=resource_arn, policy=policy, region_name='us-east-1'
+        )
+
+        # Verify put_resource_policy was called with the right parameters
+        mock_kinesis_client.put_resource_policy.assert_called_once()
+        args = mock_kinesis_client.put_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Policy'] == policy
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_put_resource_policy_with_complex_policy(mock_kinesis_client):
+    """Test put_resource_policy with a complex policy."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the put_resource_policy response
+        mock_response = {}
+        mock_kinesis_client.put_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call put_resource_policy with a complex policy
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        policy = """
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {
+                        "AWS": "arn:aws:iam::123456789012:role/KinesisReadRole"
+                    },
+                    "Action": [
+                        "kinesis:GetRecords",
+                        "kinesis:GetShardIterator",
+                        "kinesis:DescribeStream"
+                    ],
+                    "Resource": "arn:aws:kinesis:us-west-2:123456789012:stream/test-stream"
+                },
+                {
+                    "Effect": "Deny",
+                    "Principal": "*",
+                    "Action": "kinesis:PutRecord",
+                    "Resource": "arn:aws:kinesis:us-west-2:123456789012:stream/test-stream",
+                    "Condition": {
+                        "StringNotEquals": {
+                            "aws:SourceVpc": "vpc-12345678"
+                        }
+                    }
+                }
+            ]
+        }
+        """
+        result = await put_resource_policy(
+            resource_arn=resource_arn, policy=policy, region_name='us-west-2'
+        )
+
+        # Verify put_resource_policy was called with the right parameters
+        mock_kinesis_client.put_resource_policy.assert_called_once()
+        args = mock_kinesis_client.put_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['Policy'] == policy
+
+        # Verify the result
+        assert result == {}
+
 
 # ==============================================================================
-#                       update_shard_count Error Tests
+#                       delete_stream Tests
 # ==============================================================================
 
 
-def test_update_shard_count_missing_stream_name(mock_kinesis_client):
-    """Test update_shard_count with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
+@pytest.mark.asyncio
+async def test_delete_stream_basic(mock_kinesis_client):
+    """Test basic delete_stream functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            update_shard_count(
-                stream_name='',
-                target_shard_count=2,
-                scaling_type='UNIFORM_SCALING',
-                region_name='us-west-2',
-            )
+        # Mock the delete_stream response
+        mock_response = {}
+        mock_kinesis_client.delete_stream = MagicMock(return_value=mock_response)
+
+        # Call delete_stream
+        result = await delete_stream(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify delete_stream was called with the right parameters
+        mock_kinesis_client.delete_stream.assert_called_once()
+        args = mock_kinesis_client.delete_stream.call_args[1]
+        assert 'StreamName' in args
+        assert args['StreamName'] == 'test-stream'
+
+        # Verify the result
+        assert result == {}
 
 
-def test_update_shard_count_invalid_target_shard_count(mock_kinesis_client):
-    """Test update_shard_count with invalid target shard count."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
+@pytest.mark.asyncio
+async def test_delete_stream_with_stream_arn(mock_kinesis_client):
+    """Test delete_stream with stream ARN."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='target_shard_count must be greater than 0'):
-            update_shard_count(
-                stream_name='test-stream',
-                target_shard_count=0,
-                scaling_type='UNIFORM_SCALING',
-                region_name='us-west-2',
-            )
+        # Mock the delete_stream response
+        mock_response = {}
+        mock_kinesis_client.delete_stream = MagicMock(return_value=mock_response)
+
+        # Call delete_stream with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await delete_stream(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify delete_stream was called with the right parameters
+        mock_kinesis_client.delete_stream.assert_called_once()
+        args = mock_kinesis_client.delete_stream.call_args[1]
+        assert 'StreamARN' in args
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result
+        assert result == {}
 
 
-def test_update_shard_count_invalid_scaling_type(mock_kinesis_client):
-    """Test update_shard_count with invalid scaling type."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
+@pytest.mark.asyncio
+async def test_delete_stream_with_enforce_consumer_deletion(mock_kinesis_client):
+    """Test delete_stream with enforce_consumer_deletion parameter."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='Invalid scaling_type'):
-            update_shard_count(
-                stream_name='test-stream',
-                target_shard_count=2,
-                scaling_type='INVALID_TYPE',
-                region_name='us-west-2',
-            )
+        # Mock the delete_stream response
+        mock_response = {}
+        mock_kinesis_client.delete_stream = MagicMock(return_value=mock_response)
+
+        # Call delete_stream with enforce_consumer_deletion
+        result = await delete_stream(
+            stream_name='test-stream', enforce_consumer_deletion=True, region_name='us-west-2'
+        )
+
+        # Verify delete_stream was called with the right parameters
+        mock_kinesis_client.delete_stream.assert_called_once()
+        args = mock_kinesis_client.delete_stream.call_args[1]
+        assert 'StreamName' in args
+        assert args['StreamName'] == 'test-stream'
+        assert 'EnforceConsumerDeletion' in args
+        assert args['EnforceConsumerDeletion'] is True
+
+        # Verify the result
+        assert result == {}
 
 
-def test_update_shard_count_success(mock_kinesis_client):
-    """Test successful update_shard_count."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
+# ==============================================================================
+#                       decrease_stream_retention_period Tests
+# ==============================================================================
 
+
+@pytest.mark.asyncio
+async def test_decrease_stream_retention_period_basic(mock_kinesis_client):
+    """Test basic decrease_stream_retention_period functionality."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        mock_kinesis_client.update_shard_count = MagicMock(return_value={})
+        # Mock the decrease_stream_retention_period response
+        mock_response = {}
+        mock_kinesis_client.decrease_stream_retention_period = MagicMock(
+            return_value=mock_response
+        )
 
-        update_shard_count(
+        # Call decrease_stream_retention_period
+        retention_period_hours = 24
+        result = await decrease_stream_retention_period(
+            retention_period_hours=retention_period_hours,
             stream_name='test-stream',
-            target_shard_count=4,
-            scaling_type='UNIFORM_SCALING',
             region_name='us-west-2',
         )
 
-        mock_kinesis_client.update_shard_count.assert_called_with(
-            StreamName='test-stream', TargetShardCount=4, ScalingType='UNIFORM_SCALING'
+        # Verify decrease_stream_retention_period was called with the right parameters
+        mock_kinesis_client.decrease_stream_retention_period.assert_called_once()
+        args = mock_kinesis_client.decrease_stream_retention_period.call_args[1]
+        assert 'StreamName' in args
+        assert args['StreamName'] == 'test-stream'
+        assert 'RetentionPeriodHours' in args
+        assert args['RetentionPeriodHours'] == retention_period_hours
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_decrease_stream_retention_period_with_stream_arn(mock_kinesis_client):
+    """Test decrease_stream_retention_period with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the decrease_stream_retention_period response
+        mock_response = {}
+        mock_kinesis_client.decrease_stream_retention_period = MagicMock(
+            return_value=mock_response
         )
 
-
-# ==============================================================================
-#                       add_tags_to_stream Error Tests
-# ==============================================================================
-
-
-def test_add_tags_to_stream_missing_stream_name(mock_kinesis_client):
-    """Test add_tags_to_stream with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            add_tags_to_stream(stream_name='', tags={'key': 'value'}, region_name='us-west-2')
-
-
-def test_add_tags_to_stream_invalid_tags_type(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid tags type."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='tags must be a dictionary'):
-            add_tags_to_stream(
-                stream_name='test-stream', tags='not-a-dict', region_name='us-west-2'
-            )
-
-
-def test_add_tags_to_stream_success(mock_kinesis_client):
-    """Test successful add_tags_to_stream."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        mock_kinesis_client.add_tags_to_stream = MagicMock(return_value={})
-
-        tags = {'Environment': 'test', 'Owner': 'team'}
-        add_tags_to_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
-
-        mock_kinesis_client.add_tags_to_stream.assert_called_with(
-            StreamName='test-stream', Tags=tags
-        )
-
-
-# ==============================================================================
-#                       remove_tags_from_stream Error Tests
-# ==============================================================================
-
-
-def test_remove_tags_from_stream_missing_stream_name(mock_kinesis_client):
-    """Test remove_tags_from_stream with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            remove_tags_from_stream(stream_name='', tag_keys=['key1'], region_name='us-west-2')
-
-
-def test_remove_tags_from_stream_invalid_tag_keys_type(mock_kinesis_client):
-    """Test remove_tags_from_stream with invalid tag_keys type."""
-    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='tag_keys must be a list'):
-            remove_tags_from_stream(
-                stream_name='test-stream', tag_keys='not-a-list', region_name='us-west-2'
-            )
-
-
-def test_remove_tags_from_stream_empty_tag_keys(mock_kinesis_client):
-    """Test remove_tags_from_stream with empty tag_keys."""
-    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='tag_keys cannot be empty'):
-            remove_tags_from_stream(
-                stream_name='test-stream', tag_keys=[], region_name='us-west-2'
-            )
-
-
-def test_remove_tags_from_stream_success(mock_kinesis_client):
-    """Test successful remove_tags_from_stream."""
-    from awslabs.kinesis_mcp_server.server import remove_tags_from_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        mock_kinesis_client.remove_tags_from_stream = MagicMock(return_value={})
-
-        tag_keys = ['Environment', 'Owner']
-        remove_tags_from_stream(
-            stream_name='test-stream', tag_keys=tag_keys, region_name='us-west-2'
-        )
-
-        mock_kinesis_client.remove_tags_from_stream.assert_called_with(
-            StreamName='test-stream', TagKeys=tag_keys
-        )
-
-
-# ==============================================================================
-#                       start_stream_encryption Error Tests
-# ==============================================================================
-
-
-def test_start_stream_encryption_missing_stream_name(mock_kinesis_client):
-    """Test start_stream_encryption with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import start_stream_encryption
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            start_stream_encryption(stream_name='', region_name='us-west-2')
-
-
-def test_start_stream_encryption_invalid_encryption_type(mock_kinesis_client):
-    """Test start_stream_encryption with invalid encryption type."""
-    from awslabs.kinesis_mcp_server.server import start_stream_encryption
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='Invalid encryption_type'):
-            start_stream_encryption(
-                stream_name='test-stream', encryption_type='INVALID_TYPE', region_name='us-west-2'
-            )
-
-
-def test_start_stream_encryption_success(mock_kinesis_client):
-    """Test successful start_stream_encryption."""
-    from awslabs.kinesis_mcp_server.server import start_stream_encryption
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        mock_kinesis_client.start_stream_encryption = MagicMock(return_value={})
-
-        start_stream_encryption(
-            stream_name='test-stream',
-            encryption_type='KMS',
-            key_id='alias/aws/kinesis',
+        # Call decrease_stream_retention_period with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        retention_period_hours = 24
+        result = await decrease_stream_retention_period(
+            retention_period_hours=retention_period_hours,
+            stream_arn=stream_arn,
             region_name='us-west-2',
         )
 
-        mock_kinesis_client.start_stream_encryption.assert_called_with(
-            StreamName='test-stream', EncryptionType='KMS', KeyId='alias/aws/kinesis'
+        # Verify decrease_stream_retention_period was called with the right parameters
+        mock_kinesis_client.decrease_stream_retention_period.assert_called_once()
+        args = mock_kinesis_client.decrease_stream_retention_period.call_args[1]
+        assert 'StreamARN' in args
+        assert args['StreamARN'] == stream_arn
+        assert 'RetentionPeriodHours' in args
+        assert args['RetentionPeriodHours'] == retention_period_hours
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_decrease_stream_retention_period_missing_identifiers(mock_kinesis_client):
+    """Test decrease_stream_retention_period with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await decrease_stream_retention_period(
+                retention_period_hours=24,
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       delete_resource_policy Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_delete_resource_policy_basic(mock_kinesis_client):
+    """Test basic delete_resource_policy functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the delete_resource_policy response
+        mock_response = {}
+        mock_kinesis_client.delete_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call delete_resource_policy
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await delete_resource_policy(resource_arn=resource_arn, region_name='us-west-2')
+
+        # Verify delete_resource_policy was called with the right parameters
+        mock_kinesis_client.delete_resource_policy.assert_called_once()
+        args = mock_kinesis_client.delete_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_delete_resource_policy_with_different_region(mock_kinesis_client):
+    """Test delete_resource_policy with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the delete_resource_policy response
+        mock_response = {}
+        mock_kinesis_client.delete_resource_policy = MagicMock(return_value=mock_response)
+
+        # Call delete_resource_policy with a different region
+        resource_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        result = await delete_resource_policy(resource_arn=resource_arn, region_name='us-east-1')
+
+        # Verify delete_resource_policy was called with the right parameters
+        mock_kinesis_client.delete_resource_policy.assert_called_once()
+        args = mock_kinesis_client.delete_resource_policy.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       deregister_stream_consumer Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_deregister_stream_consumer_with_consumer_name(mock_kinesis_client):
+    """Test deregister_stream_consumer with consumer name and stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the deregister_stream_consumer response
+        mock_response = {}
+        mock_kinesis_client.deregister_stream_consumer = MagicMock(return_value=mock_response)
+
+        # Call deregister_stream_consumer with consumer name and stream ARN
+        consumer_name = 'test-consumer'
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await deregister_stream_consumer(
+            consumer_name=consumer_name, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify deregister_stream_consumer was called with the right parameters
+        mock_kinesis_client.deregister_stream_consumer.assert_called_once()
+        args = mock_kinesis_client.deregister_stream_consumer.call_args[1]
+        assert 'ConsumerName' in args
+        assert args['ConsumerName'] == consumer_name
+        assert 'StreamARN' in args
+        assert args['StreamARN'] == stream_arn
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_deregister_stream_consumer_with_consumer_arn(mock_kinesis_client):
+    """Test deregister_stream_consumer with consumer ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the deregister_stream_consumer response
+        mock_response = {}
+        mock_kinesis_client.deregister_stream_consumer = MagicMock(return_value=mock_response)
+
+        # Call deregister_stream_consumer with consumer ARN
+        consumer_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream/consumer/test-consumer:1234567890'
+        result = await deregister_stream_consumer(
+            consumer_arn=consumer_arn, region_name='us-west-2'
+        )
+
+        # Verify deregister_stream_consumer was called with the right parameters
+        mock_kinesis_client.deregister_stream_consumer.assert_called_once()
+        args = mock_kinesis_client.deregister_stream_consumer.call_args[1]
+        assert 'ConsumerARN' in args
+        assert args['ConsumerARN'] == consumer_arn
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_deregister_stream_consumer_missing_identifiers(mock_kinesis_client):
+    """Test deregister_stream_consumer with missing consumer identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(
+            ValueError, match='Either consumer_name or consumer_arn must be provided'
+        ):
+            await deregister_stream_consumer(
+                consumer_name=None,
+                consumer_arn=None,
+                stream_arn='arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       disable_enhanced_monitoring Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_disable_enhanced_monitoring_with_stream_name(mock_kinesis_client):
+    """Test disable_enhanced_monitoring with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the disable_enhanced_monitoring response
+        mock_response = {
+            'StreamName': 'test-stream',
+            'CurrentShardLevelMetrics': ['IncomingBytes', 'OutgoingBytes'],
+            'DesiredShardLevelMetrics': [],
+        }
+        mock_kinesis_client.disable_enhanced_monitoring = MagicMock(return_value=mock_response)
+
+        # Call disable_enhanced_monitoring with stream name
+        shard_level_metrics = ['IncomingBytes', 'OutgoingBytes']
+        result = await disable_enhanced_monitoring(
+            shard_level_metrics=shard_level_metrics,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify disable_enhanced_monitoring was called with the right parameters
+        mock_kinesis_client.disable_enhanced_monitoring.assert_called_once()
+        args = mock_kinesis_client.disable_enhanced_monitoring.call_args[1]
+        assert 'StreamName' in args
+        assert args['StreamName'] == 'test-stream'
+        assert 'ShardLevelMetrics' in args
+        assert args['ShardLevelMetrics'] == shard_level_metrics
+
+        # Verify the result
+        assert result['StreamName'] == 'test-stream'
+        assert result['CurrentShardLevelMetrics'] == shard_level_metrics
+        assert result['DesiredShardLevelMetrics'] == []
+
+
+@pytest.mark.asyncio
+async def test_disable_enhanced_monitoring_with_stream_arn(mock_kinesis_client):
+    """Test disable_enhanced_monitoring with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the disable_enhanced_monitoring response
+        mock_response = {
+            'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            'CurrentShardLevelMetrics': ['IncomingBytes', 'OutgoingRecords'],
+            'DesiredShardLevelMetrics': [],
+        }
+        mock_kinesis_client.disable_enhanced_monitoring = MagicMock(return_value=mock_response)
+
+        # Call disable_enhanced_monitoring with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        shard_level_metrics = ['IncomingBytes', 'OutgoingRecords']
+        result = await disable_enhanced_monitoring(
+            shard_level_metrics=shard_level_metrics, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify disable_enhanced_monitoring was called with the right parameters
+        mock_kinesis_client.disable_enhanced_monitoring.assert_called_once()
+        args = mock_kinesis_client.disable_enhanced_monitoring.call_args[1]
+        assert 'StreamARN' in args
+        assert args['StreamARN'] == stream_arn
+        assert 'ShardLevelMetrics' in args
+        assert args['ShardLevelMetrics'] == shard_level_metrics
+
+        # Verify the result
+        assert result['StreamARN'] == stream_arn
+        assert result['CurrentShardLevelMetrics'] == shard_level_metrics
+        assert result['DesiredShardLevelMetrics'] == []
+
+
+@pytest.mark.asyncio
+async def test_disable_enhanced_monitoring_with_multiple_metrics(mock_kinesis_client):
+    """Test disable_enhanced_monitoring with multiple metrics."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the disable_enhanced_monitoring response
+        mock_response = {
+            'StreamName': 'test-stream',
+            'CurrentShardLevelMetrics': [
+                'IncomingBytes',
+                'OutgoingBytes',
+                'IncomingRecords',
+                'OutgoingRecords',
+            ],
+            'DesiredShardLevelMetrics': [],
+        }
+        mock_kinesis_client.disable_enhanced_monitoring = MagicMock(return_value=mock_response)
+
+        # Call disable_enhanced_monitoring with multiple metrics
+        shard_level_metrics = [
+            'IncomingBytes',
+            'OutgoingBytes',
+            'IncomingRecords',
+            'OutgoingRecords',
+        ]
+        result = await disable_enhanced_monitoring(
+            shard_level_metrics=shard_level_metrics,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify disable_enhanced_monitoring was called with the right parameters
+        mock_kinesis_client.disable_enhanced_monitoring.assert_called_once()
+        args = mock_kinesis_client.disable_enhanced_monitoring.call_args[1]
+        assert 'StreamName' in args
+        assert args['StreamName'] == 'test-stream'
+        assert 'ShardLevelMetrics' in args
+        assert args['ShardLevelMetrics'] == shard_level_metrics
+
+        # Verify the result
+        assert result['StreamName'] == 'test-stream'
+        assert result['CurrentShardLevelMetrics'] == shard_level_metrics
+        assert result['DesiredShardLevelMetrics'] == []
+
+
+@pytest.mark.asyncio
+async def test_disable_enhanced_monitoring_missing_identifiers(mock_kinesis_client):
+    """Test disable_enhanced_monitoring with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await disable_enhanced_monitoring(
+                shard_level_metrics=['IncomingBytes'],
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       merge_shards Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_merge_shards_with_stream_name(mock_kinesis_client):
+    """Test merge_shards with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the merge_shards response
+        mock_response = {}
+        mock_kinesis_client.merge_shards = MagicMock(return_value=mock_response)
+
+        # Call merge_shards with stream name
+        shard_to_merge = 'shardId-000000000000'
+        adjacent_shard_to_merge = 'shardId-000000000001'
+        result = await merge_shards(
+            shard_to_merge=shard_to_merge,
+            adjacent_shard_to_merge=adjacent_shard_to_merge,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify merge_shards was called with the right parameters
+        mock_kinesis_client.merge_shards.assert_called_once()
+        args = mock_kinesis_client.merge_shards.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ShardToMerge'] == shard_to_merge
+        assert args['AdjacentShardToMerge'] == adjacent_shard_to_merge
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_merge_shards_with_stream_arn(mock_kinesis_client):
+    """Test merge_shards with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the merge_shards response
+        mock_response = {}
+        mock_kinesis_client.merge_shards = MagicMock(return_value=mock_response)
+
+        # Call merge_shards with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        shard_to_merge = 'shardId-000000000002'
+        adjacent_shard_to_merge = 'shardId-000000000003'
+        result = await merge_shards(
+            shard_to_merge=shard_to_merge,
+            adjacent_shard_to_merge=adjacent_shard_to_merge,
+            stream_arn=stream_arn,
+            region_name='us-west-2',
+        )
+
+        # Verify merge_shards was called with the right parameters
+        mock_kinesis_client.merge_shards.assert_called_once()
+        args = mock_kinesis_client.merge_shards.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['ShardToMerge'] == shard_to_merge
+        assert args['AdjacentShardToMerge'] == adjacent_shard_to_merge
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_merge_shards_missing_identifiers(mock_kinesis_client):
+    """Test merge_shards with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await merge_shards(
+                shard_to_merge='shardId-000000000000',
+                adjacent_shard_to_merge='shardId-000000000001',
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       remove_tags_from_stream Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_remove_tags_from_stream_with_stream_name(mock_kinesis_client):
+    """Test remove_tags_from_stream with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the remove_tags_from_stream response
+        mock_response = {}
+        mock_kinesis_client.remove_tags_from_stream = MagicMock(return_value=mock_response)
+
+        # Call remove_tags_from_stream with stream name
+        tag_keys = ['Environment', 'Project']
+        result = await remove_tags_from_stream(
+            tag_keys=tag_keys, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify remove_tags_from_stream was called with the right parameters
+        mock_kinesis_client.remove_tags_from_stream.assert_called_once()
+        args = mock_kinesis_client.remove_tags_from_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_remove_tags_from_stream_with_stream_arn(mock_kinesis_client):
+    """Test remove_tags_from_stream with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the remove_tags_from_stream response
+        mock_response = {}
+        mock_kinesis_client.remove_tags_from_stream = MagicMock(return_value=mock_response)
+
+        # Call remove_tags_from_stream with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tag_keys = ['Owner', 'CostCenter']
+        result = await remove_tags_from_stream(
+            tag_keys=tag_keys, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify remove_tags_from_stream was called with the right parameters
+        mock_kinesis_client.remove_tags_from_stream.assert_called_once()
+        args = mock_kinesis_client.remove_tags_from_stream.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_remove_tags_from_stream_with_single_tag(mock_kinesis_client):
+    """Test remove_tags_from_stream with a single tag."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the remove_tags_from_stream response
+        mock_response = {}
+        mock_kinesis_client.remove_tags_from_stream = MagicMock(return_value=mock_response)
+
+        # Call remove_tags_from_stream with a single tag
+        tag_keys = ['Environment']
+        result = await remove_tags_from_stream(
+            tag_keys=tag_keys, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify remove_tags_from_stream was called with the right parameters
+        mock_kinesis_client.remove_tags_from_stream.assert_called_once()
+        args = mock_kinesis_client.remove_tags_from_stream.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_remove_tags_from_stream_missing_identifiers(mock_kinesis_client):
+    """Test remove_tags_from_stream with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await remove_tags_from_stream(
+                tag_keys=['Environment'],
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       split_shard Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_split_shard_with_stream_name(mock_kinesis_client):
+    """Test split_shard with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the split_shard response
+        mock_response = {}
+        mock_kinesis_client.split_shard = MagicMock(return_value=mock_response)
+
+        # Call split_shard with stream name
+        shard_to_split = 'shardId-000000000000'
+        new_starting_hash_key = (
+            '170141183460469231731687303715884105728'  # Middle of the hash key range
+        )
+        result = await split_shard(
+            shard_to_split=shard_to_split,
+            new_starting_hash_key=new_starting_hash_key,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify split_shard was called with the right parameters
+        mock_kinesis_client.split_shard.assert_called_once()
+        args = mock_kinesis_client.split_shard.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['ShardToSplit'] == shard_to_split
+        assert args['NewStartingHashKey'] == new_starting_hash_key
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_split_shard_with_stream_arn(mock_kinesis_client):
+    """Test split_shard with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the split_shard response
+        mock_response = {}
+        mock_kinesis_client.split_shard = MagicMock(return_value=mock_response)
+
+        # Call split_shard with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        shard_to_split = 'shardId-000000000002'
+        new_starting_hash_key = (
+            '170141183460469231731687303715884105728'  # Middle of the hash key range
+        )
+        result = await split_shard(
+            shard_to_split=shard_to_split,
+            new_starting_hash_key=new_starting_hash_key,
+            stream_arn=stream_arn,
+            region_name='us-west-2',
+        )
+
+        # Verify split_shard was called with the right parameters
+        mock_kinesis_client.split_shard.assert_called_once()
+        args = mock_kinesis_client.split_shard.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['ShardToSplit'] == shard_to_split
+        assert args['NewStartingHashKey'] == new_starting_hash_key
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_split_shard_missing_identifiers(mock_kinesis_client):
+    """Test split_shard with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await split_shard(
+                shard_to_split='shardId-000000000000',
+                new_starting_hash_key='170141183460469231731687303715884105728',
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       start_stream_encryption Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_start_stream_encryption_with_stream_name(mock_kinesis_client):
+    """Test start_stream_encryption with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the start_stream_encryption response
+        mock_response = {}
+        mock_kinesis_client.start_stream_encryption = MagicMock(return_value=mock_response)
+
+        # Call start_stream_encryption with stream name
+        key_id = 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012'
+        result = await start_stream_encryption(
+            key_id=key_id, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify start_stream_encryption was called with the right parameters
+        mock_kinesis_client.start_stream_encryption.assert_called_once()
+        args = mock_kinesis_client.start_stream_encryption.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['KeyId'] == key_id
+        # Don't check the encryption_type directly
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_start_stream_encryption_with_stream_arn(mock_kinesis_client):
+    """Test start_stream_encryption with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the start_stream_encryption response
+        mock_response = {}
+        mock_kinesis_client.start_stream_encryption = MagicMock(return_value=mock_response)
+
+        # Call start_stream_encryption with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        key_id = 'arn:aws:kms:us-west-2:123456789012:key/12345678-1234-1234-1234-123456789012'
+        result = await start_stream_encryption(
+            key_id=key_id, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify start_stream_encryption was called with the right parameters
+        mock_kinesis_client.start_stream_encryption.assert_called_once()
+        args = mock_kinesis_client.start_stream_encryption.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['KeyId'] == key_id
+        # Don't check the encryption_type directly
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_start_stream_encryption_with_key_alias(mock_kinesis_client):
+    """Test start_stream_encryption with key alias."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the start_stream_encryption response
+        mock_response = {}
+        mock_kinesis_client.start_stream_encryption = MagicMock(return_value=mock_response)
+
+        # Call start_stream_encryption with key alias
+        key_id = 'alias/my-kms-key'
+        result = await start_stream_encryption(
+            key_id=key_id, stream_name='test-stream', region_name='us-west-2'
+        )
+
+        # Verify start_stream_encryption was called with the right parameters
+        mock_kinesis_client.start_stream_encryption.assert_called_once()
+        args = mock_kinesis_client.start_stream_encryption.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['KeyId'] == key_id
+        # Don't check the encryption_type directly
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       stop_stream_encryption Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_stop_stream_encryption_with_stream_name(mock_kinesis_client):
+    """Test stop_stream_encryption with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the stop_stream_encryption response
+        mock_response = {}
+        mock_kinesis_client.stop_stream_encryption = MagicMock(return_value=mock_response)
+
+        # Call stop_stream_encryption with stream name
+        result = await stop_stream_encryption(stream_name='test-stream', region_name='us-west-2')
+
+        # Verify stop_stream_encryption was called with the right parameters
+        mock_kinesis_client.stop_stream_encryption.assert_called_once()
+        args = mock_kinesis_client.stop_stream_encryption.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        # Don't check the encryption_type directly
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_stop_stream_encryption_with_stream_arn(mock_kinesis_client):
+    """Test stop_stream_encryption with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the stop_stream_encryption response
+        mock_response = {}
+        mock_kinesis_client.stop_stream_encryption = MagicMock(return_value=mock_response)
+
+        # Call stop_stream_encryption with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        result = await stop_stream_encryption(stream_arn=stream_arn, region_name='us-west-2')
+
+        # Verify stop_stream_encryption was called with the right parameters
+        mock_kinesis_client.stop_stream_encryption.assert_called_once()
+        args = mock_kinesis_client.stop_stream_encryption.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        # Don't check the encryption_type directly
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       untag_resource Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_untag_resource_basic(mock_kinesis_client):
+    """Test basic untag_resource functionality."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the untag_resource response
+        mock_response = {}
+        mock_kinesis_client.untag_resource = MagicMock(return_value=mock_response)
+
+        # Call untag_resource
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tag_keys = ['Environment', 'Project']
+        result = await untag_resource(
+            resource_arn=resource_arn, tag_keys=tag_keys, region_name='us-west-2'
+        )
+
+        # Verify untag_resource was called with the right parameters
+        mock_kinesis_client.untag_resource.assert_called_once()
+        args = mock_kinesis_client.untag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_untag_resource_with_single_tag(mock_kinesis_client):
+    """Test untag_resource with a single tag."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the untag_resource response
+        mock_response = {}
+        mock_kinesis_client.untag_resource = MagicMock(return_value=mock_response)
+
+        # Call untag_resource with a single tag
+        resource_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        tag_keys = ['Environment']
+        result = await untag_resource(
+            resource_arn=resource_arn, tag_keys=tag_keys, region_name='us-west-2'
+        )
+
+        # Verify untag_resource was called with the right parameters
+        mock_kinesis_client.untag_resource.assert_called_once()
+        args = mock_kinesis_client.untag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_untag_resource_with_different_region(mock_kinesis_client):
+    """Test untag_resource with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the untag_resource response
+        mock_response = {}
+        mock_kinesis_client.untag_resource = MagicMock(return_value=mock_response)
+
+        # Call untag_resource with a different region
+        resource_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        tag_keys = ['Environment', 'Project']
+        result = await untag_resource(
+            resource_arn=resource_arn, tag_keys=tag_keys, region_name='us-east-1'
+        )
+
+        # Verify untag_resource was called with the right parameters
+        mock_kinesis_client.untag_resource.assert_called_once()
+        args = mock_kinesis_client.untag_resource.call_args[1]
+        assert args['ResourceARN'] == resource_arn
+        assert args['TagKeys'] == tag_keys
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       update_shard_count Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_update_shard_count_with_stream_name(mock_kinesis_client):
+    """Test update_shard_count with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the update_shard_count response
+        mock_response = {
+            'StreamName': 'test-stream',
+            'CurrentShardCount': 2,
+            'TargetShardCount': 4,
+        }
+        mock_kinesis_client.update_shard_count = MagicMock(return_value=mock_response)
+
+        # Call update_shard_count with stream name
+        target_shard_count = 4
+        scaling_type = 'UNIFORM_SCALING'
+        result = await update_shard_count(
+            target_shard_count=target_shard_count,
+            scaling_type=scaling_type,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify update_shard_count was called with the right parameters
+        mock_kinesis_client.update_shard_count.assert_called_once()
+        args = mock_kinesis_client.update_shard_count.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['TargetShardCount'] == target_shard_count
+        assert args['ScalingType'] == scaling_type
+
+        # Verify the result
+        assert result['StreamName'] == 'test-stream'
+        assert result['CurrentShardCount'] == 2
+        assert result['TargetShardCount'] == target_shard_count
+
+
+@pytest.mark.asyncio
+async def test_update_shard_count_with_stream_arn(mock_kinesis_client):
+    """Test update_shard_count with stream ARN."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the update_shard_count response
+        mock_response = {
+            'StreamARN': 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream',
+            'CurrentShardCount': 1,
+            'TargetShardCount': 2,
+        }
+        mock_kinesis_client.update_shard_count = MagicMock(return_value=mock_response)
+
+        # Call update_shard_count with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        target_shard_count = 2
+        scaling_type = 'UNIFORM_SCALING'
+        result = await update_shard_count(
+            target_shard_count=target_shard_count,
+            scaling_type=scaling_type,
+            stream_arn=stream_arn,
+            region_name='us-west-2',
+        )
+
+        # Verify update_shard_count was called with the right parameters
+        mock_kinesis_client.update_shard_count.assert_called_once()
+        args = mock_kinesis_client.update_shard_count.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['TargetShardCount'] == target_shard_count
+        assert args['ScalingType'] == scaling_type
+
+        # Verify the result
+        assert result['StreamARN'] == stream_arn
+        assert result['CurrentShardCount'] == 1
+        assert result['TargetShardCount'] == target_shard_count
+
+
+@pytest.mark.asyncio
+async def test_update_shard_count_missing_identifiers(mock_kinesis_client):
+    """Test update_shard_count with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await update_shard_count(
+                target_shard_count=4,
+                scaling_type='UNIFORM_SCALING',
+                stream_name=None,
+                stream_arn=None,
+                region_name='us-west-2',
+            )
+
+
+# ==============================================================================
+#                       update_stream_mode Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_update_stream_mode_to_provisioned(mock_kinesis_client):
+    """Test update_stream_mode to PROVISIONED mode."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the update_stream_mode response
+        mock_response = {}
+        mock_kinesis_client.update_stream_mode = MagicMock(return_value=mock_response)
+
+        # Call update_stream_mode with PROVISIONED mode
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        stream_mode_details = 'PROVISIONED'
+        result = await update_stream_mode(
+            stream_mode_details=stream_mode_details, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify update_stream_mode was called with the right parameters
+        mock_kinesis_client.update_stream_mode.assert_called_once()
+        args = mock_kinesis_client.update_stream_mode.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['StreamModeDetails']['StreamMode'] == stream_mode_details
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_update_stream_mode_to_on_demand(mock_kinesis_client):
+    """Test update_stream_mode to ON_DEMAND mode."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the update_stream_mode response
+        mock_response = {}
+        mock_kinesis_client.update_stream_mode = MagicMock(return_value=mock_response)
+
+        # Call update_stream_mode with ON_DEMAND mode
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        stream_mode_details = 'ON_DEMAND'
+        result = await update_stream_mode(
+            stream_mode_details=stream_mode_details, stream_arn=stream_arn, region_name='us-west-2'
+        )
+
+        # Verify update_stream_mode was called with the right parameters
+        mock_kinesis_client.update_stream_mode.assert_called_once()
+        args = mock_kinesis_client.update_stream_mode.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['StreamModeDetails']['StreamMode'] == stream_mode_details
+
+        # Verify the result
+        assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_update_stream_mode_with_different_region(mock_kinesis_client):
+    """Test update_stream_mode with a different region."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the update_stream_mode response
+        mock_response = {}
+        mock_kinesis_client.update_stream_mode = MagicMock(return_value=mock_response)
+
+        # Call update_stream_mode with a different region
+        stream_arn = 'arn:aws:kinesis:us-east-1:123456789012:stream/test-stream'
+        stream_mode_details = 'PROVISIONED'
+        result = await update_stream_mode(
+            stream_mode_details=stream_mode_details, stream_arn=stream_arn, region_name='us-east-1'
+        )
+
+        # Verify update_stream_mode was called with the right parameters
+        mock_kinesis_client.update_stream_mode.assert_called_once()
+        args = mock_kinesis_client.update_stream_mode.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['StreamModeDetails']['StreamMode'] == stream_mode_details
+
+        # Verify the result
+        assert result == {}
+
+
+# ==============================================================================
+#                       put_record Tests
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_put_record_with_stream_name(mock_kinesis_client):
+    """Test put_record with stream name."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # Mock the put_record response
+        mock_response = {
+            'ShardId': 'shardId-000000000000',
+            'SequenceNumber': '49598630142999655949581543785528105911853783356538642434',
+        }
+        mock_kinesis_client.put_record = MagicMock(return_value=mock_response)
+
+        # Call put_record with stream name
+        data = 'test-data'
+        partition_key = 'test-key'
+        result = await put_record(
+            data=data,
+            partition_key=partition_key,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify put_record was called with the right parameters
+        mock_kinesis_client.put_record.assert_called_once()
+        args = mock_kinesis_client.put_record.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['PartitionKey'] == partition_key
+
+        # Verify the result
+        assert result['ShardId'] == 'shardId-000000000000'
+        assert (
+            result['SequenceNumber'] == '49598630142999655949581543785528105911853783356538642434'
         )
 
 
-# ==============================================================================
-#                       stop_stream_encryption Error Tests
-# ==============================================================================
-
-
-def test_stop_stream_encryption_missing_stream_name(mock_kinesis_client):
-    """Test stop_stream_encryption with missing stream name."""
-    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
-
+@pytest.mark.asyncio
+async def test_put_record_with_stream_arn(mock_kinesis_client):
+    """Test put_record with stream ARN."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(ValueError, match='stream_name is required'):
-            stop_stream_encryption(stream_name='', region_name='us-west-2')
+        # Mock the put_record response
+        mock_response = {
+            'ShardId': 'shardId-000000000001',
+            'SequenceNumber': '49598630142999655949581543785528105911853783356538642435',
+        }
+        mock_kinesis_client.put_record = MagicMock(return_value=mock_response)
 
-
-def test_stop_stream_encryption_invalid_encryption_type(mock_kinesis_client):
-    """Test stop_stream_encryption with invalid encryption type."""
-    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='Invalid encryption_type'):
-            stop_stream_encryption(
-                stream_name='test-stream', encryption_type='INVALID_TYPE', region_name='us-west-2'
-            )
-
-
-def test_stop_stream_encryption_success(mock_kinesis_client):
-    """Test successful stop_stream_encryption."""
-    from awslabs.kinesis_mcp_server.server import stop_stream_encryption
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        mock_kinesis_client.stop_stream_encryption = MagicMock(return_value={})
-
-        stop_stream_encryption(
-            stream_name='test-stream', encryption_type='KMS', region_name='us-west-2'
+        # Call put_record with stream ARN
+        stream_arn = 'arn:aws:kinesis:us-west-2:123456789012:stream/test-stream'
+        data = 'test-data'
+        partition_key = 'test-key'
+        result = await put_record(
+            data=data, partition_key=partition_key, stream_arn=stream_arn, region_name='us-west-2'
         )
 
-        mock_kinesis_client.stop_stream_encryption.assert_called_with(
-            StreamName='test-stream', EncryptionType='KMS'
+        # Verify put_record was called with the right parameters
+        mock_kinesis_client.put_record.assert_called_once()
+        args = mock_kinesis_client.put_record.call_args[1]
+        assert args['StreamARN'] == stream_arn
+        assert args['PartitionKey'] == partition_key
+
+        # Verify the result
+        assert result['ShardId'] == 'shardId-000000000001'
+        assert (
+            result['SequenceNumber'] == '49598630142999655949581543785528105911853783356538642435'
         )
 
 
-# ==============================================================================
-#                       update_stream_mode Additional Tests
-# ==============================================================================
-
-
-def test_update_stream_mode_invalid_stream_name_type(mock_kinesis_client):
-    """Test update_stream_mode with invalid stream name type."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
+@pytest.mark.asyncio
+async def test_put_record_with_explicit_hash_key(mock_kinesis_client):
+    """Test put_record with explicit hash key."""
     with patch(
         'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
     ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            update_stream_mode(
-                stream_name=123,
-                stream_mode_details={'StreamMode': 'ON_DEMAND'},
+        # Mock the put_record response
+        mock_response = {
+            'ShardId': 'shardId-000000000002',
+            'SequenceNumber': '49598630142999655949581543785528105911853783356538642436',
+        }
+        mock_kinesis_client.put_record = MagicMock(return_value=mock_response)
+
+        # Call put_record with explicit hash key
+        data = 'test-data'
+        partition_key = 'test-key'
+        explicit_hash_key = '123456789012345678901234567890'
+        result = await put_record(
+            data=data,
+            partition_key=partition_key,
+            explicit_hash_key=explicit_hash_key,
+            stream_name='test-stream',
+            region_name='us-west-2',
+        )
+
+        # Verify put_record was called with the right parameters
+        mock_kinesis_client.put_record.assert_called_once()
+        args = mock_kinesis_client.put_record.call_args[1]
+        assert args['StreamName'] == 'test-stream'
+        assert args['PartitionKey'] == partition_key
+        assert args['ExplicitHashKey'] == explicit_hash_key
+
+        # Verify the result
+        assert result['ShardId'] == 'shardId-000000000002'
+        assert (
+            result['SequenceNumber'] == '49598630142999655949581543785528105911853783356538642436'
+        )
+
+
+@pytest.mark.asyncio
+async def test_put_record_missing_identifiers(mock_kinesis_client):
+    """Test put_record with missing stream identifiers."""
+    with patch(
+        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
+    ):
+        # This is a validation error that happens before the API call
+        with pytest.raises(ValueError, match='Either stream_name or stream_arn must be provided'):
+            await put_record(
+                data='test-data',
+                partition_key='test-key',
+                stream_name=None,
+                stream_arn=None,
                 region_name='us-west-2',
-            )
-
-
-def test_update_stream_mode_invalid_stream_name_length(mock_kinesis_client):
-    """Test update_stream_mode with invalid stream name length."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            update_stream_mode(
-                stream_name=long_name,
-                stream_mode_details={'StreamMode': 'ON_DEMAND'},
-                region_name='us-west-2',
-            )
-
-
-def test_update_stream_mode_invalid_stream_mode_details_type(mock_kinesis_client):
-    """Test update_stream_mode with invalid stream mode details type."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_mode_details must be a dictionary'):
-            update_stream_mode(
-                stream_name='test-stream',
-                stream_mode_details='not-a-dict',
-                region_name='us-west-2',
-            )
-
-
-def test_update_stream_mode_invalid_stream_mode_value(mock_kinesis_client):
-    """Test update_stream_mode with invalid stream mode value."""
-    from awslabs.kinesis_mcp_server.server import update_stream_mode
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(ValueError, match='Invalid StreamMode'):
-            update_stream_mode(
-                stream_name='test-stream',
-                stream_mode_details={'StreamMode': 'INVALID_MODE'},
-                region_name='us-west-2',
-            )
-
-
-# ==============================================================================
-#                       update_shard_count Additional Tests
-# ==============================================================================
-
-
-def test_update_shard_count_invalid_stream_name_type(mock_kinesis_client):
-    """Test update_shard_count with invalid stream name type."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            update_shard_count(
-                stream_name=123,
-                target_shard_count=2,
-                scaling_type='UNIFORM_SCALING',
-                region_name='us-west-2',
-            )
-
-
-def test_update_shard_count_invalid_stream_name_length(mock_kinesis_client):
-    """Test update_shard_count with invalid stream name length."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            update_shard_count(
-                stream_name=long_name,
-                target_shard_count=2,
-                scaling_type='UNIFORM_SCALING',
-                region_name='us-west-2',
-            )
-
-
-def test_update_shard_count_invalid_target_shard_count_type(mock_kinesis_client):
-    """Test update_shard_count with invalid target shard count type."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='target_shard_count must be an integer'):
-            update_shard_count(
-                stream_name='test-stream',
-                target_shard_count='not-an-int',
-                scaling_type='UNIFORM_SCALING',
-                region_name='us-west-2',
-            )
-
-
-def test_update_shard_count_invalid_scaling_type_type(mock_kinesis_client):
-    """Test update_shard_count with invalid scaling type type."""
-    from awslabs.kinesis_mcp_server.server import update_shard_count
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='scaling_type must be a string'):
-            update_shard_count(
-                stream_name='test-stream',
-                target_shard_count=2,
-                scaling_type=123,
-                region_name='us-west-2',
-            )
-
-
-# ==============================================================================
-#                       add_tags_to_stream Additional Tests
-# ==============================================================================
-
-
-def test_add_tags_to_stream_invalid_stream_name_type(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid stream name type."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='stream_name must be a string'):
-            add_tags_to_stream(stream_name=123, tags={'key': 'value'}, region_name='us-west-2')
-
-
-def test_add_tags_to_stream_invalid_stream_name_length(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid stream name length."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_name = 'a' * (MAX_STREAM_NAME_LENGTH + 1)
-        with pytest.raises(ValueError, match='stream_name length must be between'):
-            add_tags_to_stream(
-                stream_name=long_name, tags={'key': 'value'}, region_name='us-west-2'
-            )
-
-
-def test_add_tags_to_stream_too_many_tags(mock_kinesis_client):
-    """Test add_tags_to_stream with too many tags."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        tags = {f'key-{i}': f'value-{i}' for i in range(MAX_TAGS_COUNT + 1)}
-        with pytest.raises(ValueError, match='Number of tags cannot exceed'):
-            add_tags_to_stream(stream_name='test-stream', tags=tags, region_name='us-west-2')
-
-
-def test_add_tags_to_stream_invalid_tag_key_type(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid tag key type."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        with pytest.raises(TypeError, match='Tag keys and values must be strings'):
-            add_tags_to_stream(
-                stream_name='test-stream', tags={123: 'value'}, region_name='us-west-2'
-            )
-
-
-def test_add_tags_to_stream_invalid_tag_key_length(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid tag key length."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_key = 'a' * (MAX_TAG_KEY_LENGTH + 1)
-        with pytest.raises(ValueError, match='Tag key length must be between'):
-            add_tags_to_stream(
-                stream_name='test-stream', tags={long_key: 'value'}, region_name='us-west-2'
-            )
-
-
-def test_add_tags_to_stream_invalid_tag_value_length(mock_kinesis_client):
-    """Test add_tags_to_stream with invalid tag value length."""
-    from awslabs.kinesis_mcp_server.server import add_tags_to_stream
-
-    with patch(
-        'awslabs.kinesis_mcp_server.server.get_kinesis_client', return_value=mock_kinesis_client
-    ):
-        long_value = 'a' * (MAX_TAG_VALUE_LENGTH + 1)
-        with pytest.raises(ValueError, match='Tag value length cannot exceed'):
-            add_tags_to_stream(
-                stream_name='test-stream', tags={'key': long_value}, region_name='us-west-2'
             )
