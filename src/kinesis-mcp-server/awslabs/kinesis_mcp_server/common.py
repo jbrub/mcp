@@ -2,27 +2,37 @@ import asyncio
 import os
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Union
 from typing_extensions import TypedDict
 
 
-def handle_exceptions(func):
+def handle_exceptions(func: Callable) -> Callable:
     """Decorator to handle exceptions for both sync and async functions."""
     if asyncio.iscoroutinefunction(func):
-        # Async version of the wrapper
+
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             try:
                 return await func(*args, **kwargs)
             except (ValueError, TypeError):
-                # Always re-raise validation errors
                 raise
             except Exception as e:
-                print(f'An error occurred: {e}')
-                # Re-raise the exception during testing
-                if os.environ.get('TESTING') == 'true':
-                    raise
-                return None
+                """Error messages are formatted and written this way to allow for agentic applications to
+                parse and handle errors programmatically. The structured format with error type prefixes
+                enables agents to make intelligent decisions based on the specific error encountered."""
+
+                error_message = str(e)
+                if 'ResourceNotFoundException' in error_message:
+                    return {'error': f'Resource not found: {error_message}'}
+                elif 'ValidationException' in error_message:
+                    return {'error': f'Validation error: {error_message}'}
+                elif 'ResourceInUseException' in error_message:
+                    return {'error': f'Resource in use: {error_message}'}
+                elif 'LimitExceededException' in error_message:
+                    return {'error': f'Limit exceeded: {error_message}'}
+                else:
+                    print(f'An error occurred: {e}')
+                    return {'error': f'An error occurred: {error_message}'}
 
         return async_wrapper
     else:
@@ -32,38 +42,51 @@ def handle_exceptions(func):
             try:
                 return func(*args, **kwargs)
             except (ValueError, TypeError):
-                # Always re-raise validation errors
                 raise
             except Exception as e:
-                print(f'An error occurred: {e}')
-                # Re-raise the exception during testing
-                if os.environ.get('TESTING') == 'true':
-                    raise
-                return None
+                """Error messages are formatted and written this way to allow for agentic applications to
+                parse and handle errors programmatically. The structured format with error type prefixes
+                enables agents to make intelligent decisions based on the specific error encountered."""
+
+                error_message = str(e)
+                if 'ResourceNotFoundException' in error_message:
+                    return {'error': f'Resource not found: {error_message}'}
+                elif 'ValidationException' in error_message:
+                    return {'error': f'Validation error: {error_message}'}
+                elif 'ResourceInUseException' in error_message:
+                    return {'error': f'Resource in use: {error_message}'}
+                elif 'LimitExceededException' in error_message:
+                    return {'error': f'Limit exceeded: {error_message}'}
+                else:
+                    print(f'An error occurred: {e}')
+                    return {'error': f'An error occurred: {error_message}'}
 
         return wrapper
 
 
-def confirm_destruction(func):
-    """Decorator to block mutations if DESTRUCTION-CHECK is set to true."""
+def mutation_check(func):
+    """Decorator to block mutations if KINESIS-READONLY is set to true."""
 
     @wraps(func)
     def wrapper(*args, **kwargs):
-        allow_destruction = os.environ.get('CONFIRM-DESTRUCTION', '').lower()
-        if allow_destruction in ('false', 'no'):  # treat these as true
+        allow_destruction = os.environ.get('KINESIS-READONLY', '').lower()
+        if allow_destruction in ('false', 'no'):
+            """This return message needs to be specificly worded as "Operation Blocked." If it is not worded
+            this way, there is a chance that the agent will disagree and create its own error message. Read developer
+            documentation for more information."""
             return {
-                'message': """
-                    Deletion blocked: Safety mechanism activated
+                'error': """
+                    Operation blocked: Elevated permissions required
 
-                    This operation was blocked by a safety mechanism designed to prevent accidental deletion of important resources.
+                    This operation requires elevated permissions to modify Kinesis resources.
 
-                    To proceed with deletion, you have the following options:
+                    To proceed with this operation, you have the following options:
 
-                    1. Set the CONFIRM_DESTRUCTIVE_ACTION environment variable to 'false'
-                    2. Use the AWS CLI directly: aws kinesis delete-stream --stream-name <name> --enforce-consumer-deletion
-                    3. Use the AWS Console to delete the resource through the web interface
+                    1. Set the KINESIS-READONLY environment variable to 'true'
+                    2. Use the AWS CLI directly with appropriate credentials
+                    3. Use the AWS Console with appropriate permissions
 
-                    WARNING: Deletion will permanently remove all data in this resource.
+                    Note: This is a safety mechanism to prevent unintended modifications to important resources.
                 """
             }
         return func(*args, **kwargs)
@@ -328,17 +351,13 @@ class PutResourcePolicyInput(TypedDict, total=False):
     Policy: str  # Required - JSON policy document as a string
 
 
-# =========================================================
-# Eleveated permissions tools
-# =========================================================
-
-
 class DeleteStreamInput(TypedDict, total=False):
     """Input parameters for the delete_stream operation.
 
     Attributes:
         StreamName: Name of the stream to delete
         StreamARN: ARN of the stream to delete
+        EnforceConsumerDeletion: Whether to enforce consumer deletion
     """
 
     StreamName: str  # Optional - Either StreamName or StreamARN required
@@ -513,3 +532,23 @@ class UpdateStreamModeInput(TypedDict, total=False):
 
     StreamModeDetails: Dict[str, str]  # Required
     StreamARN: str  # Required
+
+
+class PutRecordInput(TypedDict, total=False):
+    """Input parameters for the put_record operation.
+
+    Attributes:
+        StreamName: Name of the stream to put the record in
+        StreamARN: ARN of the stream to put the record in
+        Data: Data to put in the record
+        PartitionKey: Partition key for the record
+        ExplicitHashKey: Explicit hash key for the record
+        SequenceNumberForOrdering: Sequence number for the record
+    """
+
+    Data: bytes  # Required
+    PartitionKey: str  # Required
+    StreamName: str  # Optional - Either StreamName or StreamARN required
+    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    ExplicitHashKey: str  # Optional
+    SequenceNumberForOrdering: str  # Optional
