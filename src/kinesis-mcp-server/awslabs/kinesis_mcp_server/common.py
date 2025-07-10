@@ -98,457 +98,455 @@ class PutRecordsInput(TypedDict, total=False):
     """Input parameters for the put_records operation.
 
     Attributes:
-        Records: List of records to write to the stream
-        StreamName: Name of the stream to write to
-        StreamARN: ARN of the stream to write to
+        Records: List of records to write to the stream (Required)
+        StreamName: Name of the stream to write to (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to write to (Optional)
     """
 
-    Records: List[Dict[str, Any]]  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional
+    Records: List[Dict[str, Any]]
+    StreamName: str
+    StreamARN: str
 
 
 class GetRecordsInput(TypedDict, total=False):
     """Input parameters for the get_records operation.
 
     Attributes:
-        ShardIterator: The shard iterator to use for retrieving records
-        Limit: Maximum number of records to retrieve
-        StreamARN: ARN of the stream to retrieve records from
+        ShardIterator: The shard iterator to use for retrieving records (Required)
+        Limit: Maximum number of records to retrieve (Optional - Default 10000)
+        StreamARN: ARN of the stream to retrieve records from (Optional)
     """
 
-    ShardIterator: str  # Required
-    Limit: int  # Optional - Default 10000
-    StreamARN: str  # Optional
+    ShardIterator: str
+    Limit: int
+    StreamARN: str
 
 
 class CreateStreamInput(TypedDict, total=False):
     """Input parameters for the create_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to create
-        ShardCount: Number of shards to create
-        StreamModeDetails: Details about the stream mode
-        Tags: Tags to associate with the stream
+        StreamName: Name of the stream to create (Required)
+        ShardCount: Number of shards to create (Optional - Default 1)
+        StreamModeDetails: Details about the stream mode (Optional - Default ON_DEMAND)
+        Tags: Tags to associate with the stream (Optional)
     """
 
-    StreamName: str  # Required
-    ShardCount: int  # Optional - Default 1
-    StreamModeDetails: Dict[str, str]  # Optional - Default ON_DEMAND
-    Tags: Dict[str, str]  # Optional
+    StreamName: str
+    ShardCount: int
+    StreamModeDetails: Dict[str, str]
+    Tags: Dict[str, str]
 
 
 class ListStreamsInput(TypedDict, total=False):
     """Input parameters for the list_streams operation.
 
     Attributes:
-        ExclusiveStartStreamName: Name of the stream to start listing from
-        Limit: Maximum number of streams to list
-        NextToken: Token for pagination
+        ExclusiveStartStreamName: Name of the stream to start listing from (Optional)
+        Limit: Maximum number of streams to list (Optional)
+        NextToken: Token for pagination (Optional)
     """
 
-    ExclusiveStartStreamName: str  # Optional
-    Limit: int  # Optional
-    NextToken: str  # Optional
+    ExclusiveStartStreamName: str
+    Limit: int
+    NextToken: str
 
 
 class DescribeStreamSummaryInput(TypedDict, total=False):
     """Input parameters for the describe_stream_summary operation.
 
     Attributes:
-        StreamName: Name of the stream to describe
-        StreamARN: ARN of the stream to describe
+        StreamName: Name of the stream to describe (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to describe (Optional)
     """
 
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional
+    StreamName: str
+    StreamARN: str
 
 
 class GetShardIteratorInput(TypedDict, total=False):
     """Input parameters for the get_shard_iterator operation.
 
     Attributes:
-        ShardId: ID of the shard
-        ShardIteratorType: Type of shard iterator
-        StreamName: Name of the stream
-        StreamARN: ARN of the stream
-        StartingSequenceNumber: Starting sequence number (required for AT_SEQUENCE_NUMBER and AFTER_SEQUENCE_NUMBER)
-        Timestamp: Timestamp (required for AT_TIMESTAMP)
+        ShardId: ID of the shard (Required)
+        ShardIteratorType: Type of shard iterator (Required - Valid values: AT_SEQUENCE_NUMBER | AFTER_SEQUENCE_NUMBER | TRIM_HORIZON | LATEST | AT_TIMESTAMP)
+        StreamName: Name of the stream (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream (Optional - Either StreamName or StreamARN required)
+        StartingSequenceNumber: Starting sequence number (Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER)
+        Timestamp: Timestamp (Optional - Required if ShardIteratorType is AT_TIMESTAMP)
     """
 
-    ShardId: str  # Required
-    ShardIteratorType: str  # Required - Valid values: AT_SEQUENCE_NUMBER | AFTER_SEQUENCE_NUMBER | TRIM_HORIZON | LATEST | AT_TIMESTAMP
-    StreamName: str  # Optional # Either StreamName or StreamARN required
-    StreamARN: str  # Optional # Either StreamName or StreamARN required
-    StartingSequenceNumber: str  # Optional - Required if ShardIteratorType is AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
-    Timestamp: Union[datetime, str]  # Optional - Required if ShardIteratorType is AT_TIMESTAMP
+    ShardId: str
+    ShardIteratorType: str
+    StreamName: str
+    StreamARN: str
+    StartingSequenceNumber: str
+    Timestamp: Union[datetime, str]
 
 
 class AddTagsToStreamInput(TypedDict, total=False):
     """Input parameters for the add_tags_to_stream operation.
 
     Attributes:
-        Tags: Tags to add to the stream
-        StreamName: Name of the stream to add tags to
-        StreamARN: ARN of the stream to add tags to
+        Tags: Tags to add to the stream (Required)
+        StreamName: Name of the stream to add tags to (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to add tags to (Optional - Either StreamName or StreamARN required)
     """
 
-    Tags: Dict[str, str]  # Required - Tags to add
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    Tags: Dict[str, str]
+    StreamName: str
+    StreamARN: str
 
 
 class DescribeStreamInput(TypedDict, total=False):
     """Input parameters for the describe_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to describe
-        StreamARN: ARN of the stream to describe
-        Limit: Maximum number of shards to return
-        ExclusiveStartShardId: Shard ID to start listing from
+        StreamName: Name of the stream to describe (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to describe (Optional - Either StreamName or StreamARN required)
+        Limit: Maximum number of shards to return (Optional - Default 10000)
+        ExclusiveStartShardId: Shard ID to start listing from (Optional)
     """
 
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
-    Limit: int  # Optional - Default 10000
-    ExclusiveStartShardId: str  # Optional
+    StreamName: str
+    StreamARN: str
+    Limit: int
+    ExclusiveStartShardId: str
 
 
 class DescribeStreamConsumerInput(TypedDict, total=False):
     """Input parameters for the describe_stream_consumer operation.
 
     Attributes:
-        ConsumerARN: ARN of the consumer to describe
-        StreamARN: ARN of the stream the consumer belongs to
-        ConsumerName: Name of the consumer to describe
+        StreamARN: ARN of the stream the consumer belongs to (Optional)
+        ConsumerARN: ARN of the consumer to describe (Optional - Either ConsumerARN or ConsumerName required)
+        ConsumerName: Name of the consumer to describe (Optional - Either ConsumerARN or ConsumerName required)
     """
 
-    StreamARN: str  # Optional
-    ConsumerARN: str  # Optional - Either ConsumerARN or ConsumerName required
-    ConsumerName: str  # Optional - Either ConsumerARN or ConsumerName required
+    StreamARN: str
+    ConsumerARN: str
+    ConsumerName: str
 
 
 class ListStreamConsumersInput(TypedDict, total=False):
     """Input parameters for the list_stream_consumers operation.
 
     Attributes:
-        StreamARN: ARN of the stream to list consumers for
-        NextToken: Token for pagination
-        StreamCreationTimestamp: Timestamp to filter consumers created after this time
-        MaxResults: Maximum number of consumers to return
+        StreamARN: ARN of the stream to list consumers for (Required)
+        NextToken: Token for pagination (Optional)
+        StreamCreationTimestamp: Timestamp to filter consumers created after this time (Optional)
+        MaxResults: Maximum number of consumers to return (Optional - Default 100)
     """
 
-    StreamARN: str  # Require
-    NextToken: str  # Optional
-    StreamCreationTimestamp: Union[datetime, str]  # Optional
-    MaxResults: int  # Optional - Default 100
+    StreamARN: str
+    NextToken: str
+    StreamCreationTimestamp: Union[datetime, str]
+    MaxResults: int
 
 
 class ListTagsForResourceInput(TypedDict, total=False):
     """Input parameters for the list_tags_for_resource operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to list tags for
+        ResourceARN: ARN of the resource to list tags for (Required)
     """
 
-    ResourceARN: str  # Required - The ARN of the resource to list tags for
+    ResourceARN: str
 
 
 class EnableEnhancedMonitoringInput(TypedDict, total=False):
     """Input parameters for the enable_enhanced_monitoring operation.
 
     Attributes:
-        StreamName: Name of the stream to enable monitoring for
-        StreamARN: ARN of the stream to enable monitoring for
-        ShardLevelMetrics: List of metrics to enable
+        ShardLevelMetrics: List of metrics to enable (Required)
+        StreamName: Name of the stream to enable monitoring for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to enable monitoring for (Optional - Either StreamName or StreamARN required)
     """
 
-    ShardLevelMetrics: List[str]  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    ShardLevelMetrics: List[str]
+    StreamName: str
+    StreamARN: str
 
 
 class GetResourcePolicyInput(TypedDict, total=False):
     """Input parameters for the get_resource_policy operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to get the policy for
+        ResourceARN: ARN of the resource to get the policy for (Required)
     """
 
-    ResourceARN: str  # Required
+    ResourceARN: str
 
 
 class IncreaseStreamRetentionPeriodInput(TypedDict, total=False):
     """Input parameters for the increase_stream_retention_period operation.
 
     Attributes:
-        StreamName: Name of the stream to increase retention for
-        StreamARN: ARN of the stream to increase retention for
-        RetentionPeriodHours: New retention period in hours
+        RetentionPeriodHours: New retention period in hours (Required)
+        StreamName: Name of the stream to increase retention for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to increase retention for (Optional - Either StreamName or StreamARN required)
     """
 
-    RetentionPeriodHours: int  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    RetentionPeriodHours: int
+    StreamName: str
+    StreamARN: str
 
 
 class ListShardsInput(TypedDict, total=False):
     """Input parameters for the list_shards operation.
 
     Attributes:
-        ExclusiveStartShardId: Shard ID to start listing from
-        StreamName: Name of the stream to list shards for
-        StreamARN: ARN of the stream to list shards for
-        NextToken: Token for pagination
-        MaxResults: Maximum number of shards to return
+        ExclusiveStartShardId: Shard ID to start listing from (Optional)
+        StreamName: Name of the stream to list shards for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to list shards for (Optional - Either StreamName or StreamARN required)
+        NextToken: Token for pagination (Optional)
+        MaxResults: Maximum number of shards to return (Optional - Default 1000)
     """
 
-    ExclusiveStartShardId: str  # Optional
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
-    NextToken: str  # Optional
-    MaxResults: int  # Optional - Default 1000
+    ExclusiveStartShardId: str
+    StreamName: str
+    StreamARN: str
+    NextToken: str
+    MaxResults: int
 
 
 class TagResourceInput(TypedDict, total=False):
     """Input parameters for the tag_resource operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to tag
-        Tags: Tags to associate with the resource
+        ResourceARN: ARN of the resource to tag (Required)
+        Tags: Tags to associate with the resource (Required)
     """
 
-    ResourceARN: str  # Required
-    Tags: Dict[str, str]  # Required
+    ResourceARN: str
+    Tags: Dict[str, str]
 
 
 class ListTagsForStreamInput(TypedDict, total=False):
     """Input parameters for the list_tags_for_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to list tags for
-        StreamARN: ARN of the stream to list tags for
-        NextToken: Token for pagination
-        Limit: Maximum number of tags to return
+        ExclusiveStartTagKey: Key to start listing from (Optional)
+        StreamName: Name of the stream to list tags for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to list tags for (Optional - Either StreamName or StreamARN required)
+        Limit: Maximum number of tags to return (Optional)
     """
 
-    ExclusiveStartTagKey: str  # Optional
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
-    Limit: int  # Optional
+    ExclusiveStartTagKey: str
+    StreamName: str
+    StreamARN: str
+    Limit: int
 
 
 class PutResourcePolicyInput(TypedDict, total=False):
     """Input parameters for the put_resource_policy operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to attach the policy to
-        Policy: JSON policy document as a string
-        PolicyName: Name of the policy
+        ResourceARN: ARN of the resource to attach the policy to (Required)
+        Policy: JSON policy document as a string (Required)
     """
 
-    ResourceARN: str  # Required
-    Policy: str  # Required - JSON policy document as a string
+    ResourceARN: str
+    Policy: str
 
 
 class DeleteStreamInput(TypedDict, total=False):
     """Input parameters for the delete_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to delete
-        StreamARN: ARN of the stream to delete
-        EnforceConsumerDeletion: Whether to enforce consumer deletion
+        StreamName: Name of the stream to delete (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to delete (Optional - Either StreamName or StreamARN required)
+        EnforceConsumerDeletion: Whether to enforce consumer deletion (Optional)
     """
 
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
-    EnforceConsumerDeletion: bool  # Optional
+    StreamName: str
+    StreamARN: str
+    EnforceConsumerDeletion: bool
 
 
 class DecreaseStreamRetentionPeriodInput(TypedDict, total=False):
     """Input parameters for the decrease_stream_retention_period operation.
 
     Attributes:
-        StreamName: Name of the stream to decrease retention for
-        StreamARN: ARN of the stream to decrease retention for
-        RetentionPeriodHours: New retention period in hours
+        RetentionPeriodHours: New retention period in hours (Required)
+        StreamName: Name of the stream to decrease retention for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to decrease retention for (Optional - Either StreamName or StreamARN required)
     """
 
-    RetentionPeriodHours: int  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    RetentionPeriodHours: int
+    StreamName: str
+    StreamARN: str
 
 
 class DeleteResourcePolicyInput(TypedDict, total=False):
     """Input parameters for the delete_resource_policy operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to delete the policy from
+        ResourceARN: ARN of the resource to delete the policy from (Required)
     """
 
-    ResourceARN: str  # Required
+    ResourceARN: str
 
 
 class DeregisterStreamConsumerInput(TypedDict, total=False):
     """Input parameters for the deregister_stream_consumer operation.
 
     Attributes:
-        ConsumerARN: ARN of the consumer to deregister
-        StreamARN: ARN of the stream the consumer belongs to
-        ConsumerName: Name of the consumer to deregister
+        StreamARN: ARN of the stream the consumer belongs to (Optional)
+        ConsumerARN: ARN of the consumer to deregister (Optional - Either ConsumerARN or ConsumerName required)
+        ConsumerName: Name of the consumer to deregister (Optional - Either ConsumerARN or ConsumerName required)
     """
 
-    StreamARN: str  # Optional
-    ConsumerARN: str  # Optional - Either ConsumerARN or ConsumerName required
-    ConsumerName: str  # Optional - Either ConsumerARN or ConsumerName required
+    StreamARN: str
+    ConsumerARN: str
+    ConsumerName: str
 
 
 class DisableEnhancedMonitoringInput(TypedDict, total=False):
     """Input parameters for the disable_enhanced_monitoring operation.
 
     Attributes:
-        StreamName: Name of the stream to disable monitoring for
-        StreamARN: ARN of the stream to disable monitoring for
-        ShardLevelMetrics: List of metrics to disable
+        ShardLevelMetrics: List of metrics to disable (Required)
+        StreamName: Name of the stream to disable monitoring for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to disable monitoring for (Optional - Either StreamName or StreamARN required)
     """
 
-    ShardLevelMetrics: List[str]  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    ShardLevelMetrics: List[str]
+    StreamName: str
+    StreamARN: str
 
 
 class MergeShardsInput(TypedDict, total=False):
     """Input parameters for the merge_shards operation.
 
     Attributes:
-        StreamName: Name of the stream to merge shards in
-        StreamARN: ARN of the stream to merge shards in
-        ShardToMerge: ID of the shard to merge
-        AdjacentShardToMerge: ID of the adjacent shard to merge with
+        ShardToMerge: ID of the shard to merge (Required)
+        AdjacentShardToMerge: ID of the adjacent shard to merge with (Required)
+        StreamName: Name of the stream to merge shards in (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to merge shards in (Optional - Either StreamName or StreamARN required)
     """
 
-    ShardToMerge: str  # Required
-    AdjacentShardToMerge: str  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    ShardToMerge: str
+    AdjacentShardToMerge: str
+    StreamName: str
+    StreamARN: str
 
 
 class RemoveTagsFromStreamInput(TypedDict, total=False):
     """Input parameters for the remove_tags_from_stream operation.
 
     Attributes:
-        StreamName: Name of the stream to remove tags from
-        StreamARN: ARN of the stream to remove tags from
-        TagKeys: List of tag keys to remove
+        TagKeys: List of tag keys to remove (Required)
+        StreamName: Name of the stream to remove tags from (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to remove tags from (Optional - Either StreamName or StreamARN required)
     """
 
-    TagKeys: List[str]  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    TagKeys: List[str]
+    StreamName: str
+    StreamARN: str
 
 
 class SplitShardInput(TypedDict, total=False):
     """Input parameters for the split_shard operation.
 
     Attributes:
-        StreamName: Name of the stream to split shards in
-        StreamARN: ARN of the stream to split shards in
-        ShardToSplit: ID of the shard to split
-        NewStartingHashKey: New starting hash key for the new shard
+        ShardToSplit: ID of the shard to split (Required)
+        NewStartingHashKey: New starting hash key for the new shard (Required)
+        StreamName: Name of the stream to split shards in (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to split shards in (Optional - Either StreamName or StreamARN required)
     """
 
-    ShardToSplit: str  # Required
-    NewStartingHashKey: str  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    ShardToSplit: str
+    NewStartingHashKey: str
+    StreamName: str
+    StreamARN: str
 
 
 class StartStreamEncryptionInput(TypedDict, total=False):
     """Input parameters for the start_stream_encryption operation.
 
     Attributes:
-        StreamName: Name of the stream to encrypt
-        StreamARN: ARN of the stream to encrypt
-        EncryptionType: Type of encryption to use (e.g., KMS)
-        KeyId: ID of the KMS key to use for encryption
+        EncryptionType: Type of encryption to use (Required - Default: KMS)
+        KeyId: ID of the KMS key to use for encryption (Required)
+        StreamName: Name of the stream to encrypt (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to encrypt (Optional - Either StreamName or StreamARN required)
     """
 
-    EncryptionType: str  # Required
-    KeyId: str  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    EncryptionType: str
+    KeyId: str
+    StreamName: str
+    StreamARN: str
 
 
 class StopStreamEncryptionInput(TypedDict, total=False):
     """Input parameters for the stop_stream_encryption operation.
 
     Attributes:
-        StreamName: Name of the stream to stop encryption for
-        StreamARN: ARN of the stream to stop encryption for
-        EncryptionType: Type of encryption to stop (e.g., KMS)
+        EncryptionType: Type of encryption to stop (Required - Default: KMS)
+        StreamName: Name of the stream to stop encryption for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to stop encryption for (Optional - Either StreamName or StreamARN required)
     """
 
-    EncryptionType: str  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    EncryptionType: str
+    StreamName: str
+    StreamARN: str
 
 
 class UntagResourceInput(TypedDict, total=False):
     """Input parameters for the untag_resource operation.
 
     Attributes:
-        ResourceARN: ARN of the resource to remove tags from
-        TagKeys: List of tag keys to remove
+        ResourceARN: ARN of the resource to remove tags from (Required)
+        TagKeys: List of tag keys to remove (Required)
     """
 
-    ResourceARN: str  # Required
-    TagKeys: List[str]  # Required
+    ResourceARN: str
+    TagKeys: List[str]
 
 
 class UpdateShardCountInput(TypedDict, total=False):
     """Input parameters for the update_shard_count operation.
 
     Attributes:
-        StreamName: Name of the stream to update shard count for
-        StreamARN: ARN of the stream to update shard count for
-        TargetShardCount: Desired number of shards
-        ScalingType: Type of scaling (e.g., UNIFORM_SCALING)
+        TargetShardCount: Desired number of shards (Required)
+        ScalingType: Type of scaling (Required - Valid values: UNIFORM_SCALING)
+        StreamName: Name of the stream to update shard count for (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to update shard count for (Optional - Either StreamName or StreamARN required)
     """
 
-    TargetShardCount: int  # Required
-    ScalingType: str  # Required - Valid values: UNIFORM_SCALING | STANDARD_SCALING
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
+    TargetShardCount: int
+    ScalingType: str
+    StreamName: str
+    StreamARN: str
 
 
 class UpdateStreamModeInput(TypedDict, total=False):
     """Input parameters for the update_stream_mode operation.
 
     Attributes:
-        StreamName: Name of the stream to update mode for
-        StreamARN: ARN of the stream to update mode for
-        StreamModeDetails: Details about the new stream mode
+        StreamModeDetails: Details about the new stream mode (Required)
+        StreamARN: ARN of the stream to update mode for (Required)
     """
 
-    StreamModeDetails: Dict[str, str]  # Required
-    StreamARN: str  # Required
+    StreamModeDetails: Dict[str, str]
+    StreamARN: str
 
 
 class PutRecordInput(TypedDict, total=False):
     """Input parameters for the put_record operation.
 
     Attributes:
-        StreamName: Name of the stream to put the record in
-        StreamARN: ARN of the stream to put the record in
-        Data: Data to put in the record
-        PartitionKey: Partition key for the record
-        ExplicitHashKey: Explicit hash key for the record
-        SequenceNumberForOrdering: Sequence number for the record
+        Data: Data to put in the record (Required)
+        PartitionKey: Partition key for the record (Required)
+        StreamName: Name of the stream to put the record in (Optional - Either StreamName or StreamARN required)
+        StreamARN: ARN of the stream to put the record in (Optional - Either StreamName or StreamARN required)
+        ExplicitHashKey: Explicit hash key for the record (Optional)
+        SequenceNumberForOrdering: Sequence number for the record (Optional)
     """
 
-    Data: bytes  # Required
-    PartitionKey: str  # Required
-    StreamName: str  # Optional - Either StreamName or StreamARN required
-    StreamARN: str  # Optional - Either StreamName or StreamARN required
-    ExplicitHashKey: str  # Optional
-    SequenceNumberForOrdering: str  # Optional
+    Data: bytes
+    PartitionKey: str
+    StreamName: str
+    StreamARN: str
+    ExplicitHashKey: str
+    SequenceNumberForOrdering: str
