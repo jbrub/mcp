@@ -24,6 +24,7 @@ from moto import mock_aws
 from unittest.mock import MagicMock, patch
 
 
+os.environ['KINESIS-READONLY'] = 'false'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from awslabs.kinesis_mcp_server.consts import (
     MAX_LENGTH_SHARD_ITERATOR,
@@ -444,7 +445,7 @@ async def test_create_stream_with_non_dict_stream_mode_details(mock_kinesis_clie
         # Call create_stream with non-dict stream_mode_details
         await create_stream(
             stream_name='test-stream',
-            stream_mode_details='INVALID',  # Not a dict
+            stream_mode_details='INVALID',
             region_name='us-west-2',
         )
 
@@ -2161,11 +2162,6 @@ async def test_tag_resource_with_empty_tags(mock_kinesis_client):
 
         # Verify the result
         assert result == {}
-
-
-# ==============================================================================
-#                       tag_resource Tests
-# ==============================================================================
 
 
 @pytest.mark.asyncio
