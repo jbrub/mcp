@@ -42,6 +42,7 @@ from awslabs.kinesis_mcp_server.common import (
     PutRecordInput,
     PutRecordsInput,
     PutResourcePolicyInput,
+    RegisterStreamConsumerInput,
     RemoveTagsFromStreamInput,
     SplitShardInput,
     StartStreamEncryptionInput,
@@ -144,7 +145,16 @@ async def put_records(
     response = kinesis.put_records(**params)
 
     # Return Sequence Number and Shard ID
-    return response
+    return {
+        'message': 'Successfully wrote records to Kinesis stream',
+        'status': 'success' if response.get('FailedRecordCount', 0) == 0 else 'partial_success',
+        'stream_identifier': stream_name or stream_arn,
+        'total_records': len(records),
+        'successful_records': len(records) - response.get('FailedRecordCount', 0),
+        'failed_records': response.get('FailedRecordCount', 0),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('get_records')
@@ -179,7 +189,15 @@ async def get_records(
     response = kinesis.get_records(**params)
 
     # Return Records
-    return response
+    return {
+        'message': 'Successfully retrieved records from Kinesis shard',
+        'status': 'success',
+        'record_count': len(response.get('Records', [])),
+        'millis_behind_latest': response.get('MillisBehindLatest', 0),
+        'next_shard_iterator': response.get('NextShardIterator'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('create_stream')
@@ -226,7 +244,16 @@ async def create_stream(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.create_stream(**params)
 
-    return response
+    return {
+        'message': f"Successfully created Kinesis stream '{stream_name}'",
+        'status': 'success',
+        'stream_name': stream_name,
+        'shard_count': shard_count,
+        'stream_mode': params['StreamModeDetails']['StreamMode'],
+        'tags': tags if tags else {},
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('list_streams')
@@ -297,7 +324,22 @@ async def describe_stream_summary(
     response = kinesis.describe_stream_summary(**params)
 
     # Return Stream Summary Details
-    return response
+    return {
+        'message': 'Successfully retrieved stream summary',
+        'status': 'success',
+        'stream_name': response.get('StreamName'),
+        'stream_arn': response.get('StreamARN'),
+        'stream_status': response.get('StreamStatus'),
+        'retention_period_hours': response.get('RetentionPeriodHours'),
+        'stream_creation_timestamp': response.get('StreamCreationTimestamp'),
+        'shard_count': response.get('OpenShardCount'),
+        'stream_mode': response.get('StreamModeDetails', {}).get('StreamMode')
+        if response.get('StreamModeDetails')
+        else None,
+        'encryption_type': response.get('EncryptionType'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('get_shard_iterator')
@@ -359,7 +401,16 @@ async def get_shard_iterator(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.get_shard_iterator(**params)
 
-    return response
+    return {
+        'message': 'Successfully retrieved shard iterator',
+        'status': 'success',
+        'shard_iterator': response.get('ShardIterator'),
+        'shard_id': shard_id,
+        'stream_identifier': stream_name or stream_arn,
+        'iterator_type': shard_iterator_type,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('add_tags_to_stream')
@@ -394,7 +445,14 @@ async def add_tags_to_stream(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.add_tags_to_stream(**params)
 
-    return response
+    return {
+        'message': 'Successfully added tags to stream',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'tags': tags,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('describe_stream')
@@ -437,7 +495,22 @@ async def describe_stream(
     response = kinesis.describe_stream(**params)
 
     # Return Stream Details
-    return response
+    return {
+        'message': 'Successfully described stream',
+        'status': 'success',
+        'stream_name': response.get('StreamName'),
+        'stream_arn': response.get('StreamARN'),
+        'stream_status': response.get('StreamStatus'),
+        'shards': response.get('Shards', []),
+        'has_more_shards': response.get('HasMoreShards', False),
+        'retention_period_hours': response.get('RetentionPeriodHours'),
+        'stream_creation_timestamp': response.get('StreamCreationTimestamp'),
+        'enhanced_monitoring': response.get('EnhancedMonitoring', []),
+        'encryption_type': response.get('EncryptionType'),
+        'key_id': response.get('KeyId'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('describe_stream_consumer')
@@ -475,7 +548,20 @@ async def describe_stream_consumer(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.describe_stream_consumer(**params)
 
-    return response
+    # Return Stream Details
+    return {
+        'message': 'Successfully described stream consumer',
+        'status': 'success',
+        'consumer_name': response.get('ConsumerDescription', {}).get('ConsumerName'),
+        'consumer_arn': response.get('ConsumerDescription', {}).get('ConsumerARN'),
+        'consumer_status': response.get('ConsumerDescription', {}).get('ConsumerStatus'),
+        'consumer_creation_timestamp': response.get('ConsumerDescription', {}).get(
+            'ConsumerCreationTimestamp'
+        ),
+        'stream_arn': response.get('ConsumerDescription', {}).get('StreamARN'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('list_stream_consumers')
@@ -512,7 +598,16 @@ async def list_stream_consumers(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.list_stream_consumers(**params)
 
-    return response
+    return {
+        'message': 'Successfully listed stream consumers',
+        'status': 'success',
+        'stream_arn': stream_arn,
+        'consumer_count': len(response.get('Consumers', [])),
+        'consumers': response.get('Consumers', []),
+        'next_token': response.get('NextToken'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('list_tags_for_resource')
@@ -529,7 +624,14 @@ async def list_tags_for_resource(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.list_tags_for_resource(**params)
 
-    return response
+    return {
+        'message': 'Successfully listed tags for resource',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'tags': response.get('Tags', {}),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('describe_limits')
@@ -542,7 +644,16 @@ async def describe_limits(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.describe_limits()
 
-    return response
+    return {
+        'message': 'Successfully retrieved Kinesis limits',
+        'status': 'success',
+        'shard_limit': response.get('ShardLimit'),
+        'open_shard_count': response.get('OpenShardCount'),
+        'on_demand_stream_count': response.get('OnDemandStreamCount'),
+        'on_demand_stream_count_limit': response.get('OnDemandStreamCountLimit'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('enable_enhanced_monitoring')
@@ -579,7 +690,12 @@ async def enable_enhanced_monitoring(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.enable_enhanced_monitoring(**params)
 
-    return response
+    return {
+        'message': 'Successfully enabled enhanced monitoring',
+        'current_shard_level_metrics': response.get('CurrentShardLevelMetrics', []),
+        'desired_shard_level_metrics': response.get('DesiredShardLevelMetrics', []),
+        'api_response': response,
+    }
 
 
 @mcp.tool('get_resource_policy')
@@ -596,7 +712,14 @@ async def get_resource_policy(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.get_resource_policy(**params)
 
-    return response
+    return {
+        'message': 'Successfully retrieved resource policy',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'policy': response.get('Policy'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('increase_stream_retention_period')
@@ -683,7 +806,14 @@ async def list_shards(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.list_shards(**params)
 
-    return response
+    return {
+        'message': 'Successfully listed shards',
+        'shard_count': len(response.get('Shards', [])),
+        'shards': response.get('Shards', []),
+        'next_token': response.get('NextToken'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('tag_resource')
@@ -702,7 +832,14 @@ async def tag_resource(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.tag_resource(**params)
 
-    return response
+    return {
+        'message': 'Successfully tagged resource',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'tags': tags,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('list_tags_for_stream')
@@ -746,7 +883,14 @@ async def list_tags_for_stream(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.list_tags_for_stream(**params)
 
-    return response
+    return {
+        'message': 'Successfully listed tags for stream',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'tags': response.get('Tags', {}),
+        'has_more_tags': response.get('HasMoreTags', False),
+        'region': region_name,
+    }
 
 
 @mcp.tool('put_resource_policy')
@@ -765,7 +909,13 @@ async def put_resource_policy(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.put_resource_policy(**params)
 
-    return response
+    return {
+        'message': 'Successfully attached resource policy',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('delete_stream')
@@ -802,7 +952,14 @@ async def delete_stream(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.delete_stream(**params)
 
-    return response
+    return {
+        'message': 'Successfully deleted stream',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'enforce_consumer_deletion': enforce_consumer_deletion,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('decrease_stream_retention_period')
@@ -839,7 +996,14 @@ async def decrease_stream_retention_period(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.decrease_stream_retention_period(**params)
 
-    return response
+    return {
+        'message': f'Successfully decreased stream retention period to {retention_period_hours} hours',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'retention_period_hours': retention_period_hours,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('delete_resource_policy')
@@ -857,7 +1021,13 @@ async def delete_resource_policy(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.delete_resource_policy(**params)
 
-    return response
+    return {
+        'message': 'Successfully deleted resource policy',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('deregister_stream_consumer')
@@ -898,7 +1068,14 @@ async def deregister_stream_consumer(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.deregister_stream_consumer(**params)
 
-    return response
+    return {
+        'message': 'Successfully deregistered stream consumer',
+        'status': 'success',
+        'consumer_identifier': consumer_name or consumer_arn,
+        'stream_arn': stream_arn,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('disable_enhanced_monitoring')
@@ -935,7 +1112,14 @@ async def disable_enhanced_monitoring(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.disable_enhanced_monitoring(**params)
 
-    return response
+    return {
+        'message': 'Successfully disabled enhanced monitoring',
+        'status': 'success',
+        'current_shard_level_metrics': response.get('CurrentShardLevelMetrics', []),
+        'desired_shard_level_metrics': response.get('DesiredShardLevelMetrics', []),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('merge_shards')
@@ -976,7 +1160,15 @@ async def merge_shards(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.merge_shards(**params)
 
-    return response
+    return {
+        'message': 'Successfully merged shards',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'shard_to_merge': shard_to_merge,
+        'adjacent_shard_to_merge': adjacent_shard_to_merge,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('remove_tags_from_stream')
@@ -1011,7 +1203,14 @@ async def remove_tags_from_stream(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.remove_tags_from_stream(**params)
 
-    return response
+    return {
+        'message': 'Successfully removed tags from stream',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'tag_keys': tag_keys,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('split_shard')
@@ -1050,7 +1249,15 @@ async def split_shard(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.split_shard(**params)
 
-    return response
+    return {
+        'message': 'Successfully split shard',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'shard_to_split': shard_to_split,
+        'new_starting_hash_key': new_starting_hash_key,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('start_stream_encryption')
@@ -1088,7 +1295,15 @@ async def start_stream_encryption(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.start_stream_encryption(**params)
 
-    return response
+    return {
+        'message': 'Successfully started stream encryption',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'encryption_type': encryption_type,
+        'key_id': key_id,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('stop_stream_encryption')
@@ -1125,7 +1340,14 @@ async def stop_stream_encryption(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.stop_stream_encryption(**params)
 
-    return response
+    return {
+        'message': 'Successfully stopped stream encryption',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'encryption_type': encryption_type,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('untag_resource')
@@ -1144,7 +1366,14 @@ async def untag_resource(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.untag_resource(**params)
 
-    return response
+    return {
+        'message': 'Successfully removed tags from resource',
+        'status': 'success',
+        'resource_arn': resource_arn,
+        'tag_keys': tag_keys,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('update_shard_count')
@@ -1183,7 +1412,14 @@ async def update_shard_count(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.update_shard_count(**params)
 
-    return response
+    return {
+        'message': f'Successfully updated shard count to {target_shard_count}',
+        'status': 'success',
+        'target_shard_count': target_shard_count,
+        'scaling_type': scaling_type,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('update_stream_mode')
@@ -1207,7 +1443,14 @@ async def update_stream_mode(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.update_stream_mode(**params)
 
-    return response
+    return {
+        'message': f'Successfully updated stream mode to {response.get("StreamMode")}',
+        'status': 'success',
+        'stream_arn': stream_arn,
+        'stream_mode': response.get('StreamMode'),
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 @mcp.tool('put_record')
@@ -1259,7 +1502,52 @@ async def put_record(
     kinesis = get_kinesis_client(region_name)
     response = kinesis.put_record(**params)
 
-    return response
+    return {
+        'message': 'Successfully wrote record to Kinesis stream',
+        'status': 'success',
+        'stream_identifier': stream_name or stream_arn,
+        'shard_id': response.get('ShardId'),
+        'sequence_number': response.get('SequenceNumber'),
+        'encryption_type': response.get('EncryptionType'),
+        'region': region_name,
+        'api_response': response,
+    }
+
+
+@mcp.tool('register_stream_consumer')
+@handle_exceptions
+@mutation_check
+async def register_stream_consumer(
+    stream_arn: str = Field(..., description='ARN of the stream to register the consumer for'),
+    consumer_name: str = Field(..., description='Name of the consumer to register'),
+    tags: Optional[Dict[str, str]] = Field(
+        default=None, description='Tags to associate with the consumer'
+    ),
+    region_name: str = DEFAULT_REGION,
+) -> Dict[str, Any]:
+    """Registers a consumer with a Kinesis data stream."""
+    # Build parameters
+    params: RegisterStreamConsumerInput = {
+        'StreamARN': stream_arn,
+        'ConsumerName': consumer_name,
+    }
+
+    if tags is not None:
+        params['Tags'] = tags
+
+    # Call Kinesis API to register the consumer
+    kinesis = get_kinesis_client(region_name)
+    response = kinesis.register_stream_consumer(**params)
+
+    return {
+        'message': 'Successfully registered consumer',
+        'status': 'success',
+        'stream_arn': stream_arn,
+        'consumer_name': consumer_name,
+        'tags': tags if tags is not None else None,
+        'region': region_name,
+        'api_response': response,
+    }
 
 
 def main():

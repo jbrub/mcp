@@ -550,3 +550,16 @@ class PutRecordInput(TypedDict, total=False):
     StreamARN: str
     ExplicitHashKey: str
     SequenceNumberForOrdering: str
+
+
+class RegisterStreamConsumerInput(TypedDict, total=False):
+    """Input parameters for the register_stream_consumer operation.
+
+    Attributes:
+        ConsumerName: Name of the consumer to register (Required)
+        StreamARN: ARN of the stream to register the consumer for (Required)
+    """
+
+    ConsumerName: str
+    StreamARN: str
+    Tags: Dict[str, str]
