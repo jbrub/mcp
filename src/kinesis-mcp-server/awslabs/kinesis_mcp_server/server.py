@@ -294,6 +294,7 @@ async def list_streams(
         'HasMoreStreams': response.get('HasMoreStreams', False),
         'NextToken': response.get('NextToken', None),
         'StreamSummaries': response.get('StreamSummaries', []),
+        'api_response': response,
     }
 
 
