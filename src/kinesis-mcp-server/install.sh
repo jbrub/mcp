@@ -21,7 +21,7 @@ mkdir -p "$MCP_CONFIG_DIR"
 MCP_CONFIG_FILE="$MCP_CONFIG_DIR/mcp.json"
 
 if [ -f "$MCP_CONFIG_FILE" ]; then
-    echo "📝 Backing up existing mcp.json..."
+    echo "Backing up existing mcp.json..."
     cp "$MCP_CONFIG_FILE" "$MCP_CONFIG_FILE.backup.$(date +%s)"
 fi
 
@@ -35,8 +35,6 @@ cat > "$MCP_CONFIG_FILE" << 'EOF'
       "env": {
         "KINESIS-READONLY": "true"
       },
-      "disabled": false,
-      "autoApprove": []
     }
   }
 }
@@ -46,7 +44,7 @@ echo "AWS Kinesis MCP Server installed successfully!"
 echo ""
 echo "Configuration:"
 echo "   - Config file: $MCP_CONFIG_FILE"
-echo "   - Mode: Read-only (safe mode)"
+echo "   - Mode: Read-only"
 echo "   - Default region: us-west-2"
 echo ""
 echo "To enable write operations, change KINESIS-READONLY to 'false'"

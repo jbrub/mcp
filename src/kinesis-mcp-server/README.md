@@ -99,3 +99,9 @@ or after a successful `docker build -t awslabs/kinesis-mcp-server .`:
     }
   }
 ```
+
+## Quick Installation
+
+Run the installation script:
+```bash
+curl -sSL https://github.com/jbrub/mcp/blob/main/src/kinesis-mcp-server/install.sh | bash
