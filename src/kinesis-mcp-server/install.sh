@@ -34,7 +34,7 @@ cat > "$MCP_CONFIG_FILE" << 'EOF'
       "args": ["awslabs.kinesis-mcp-server@latest"],
       "env": {
         "KINESIS-READONLY": "true"
-      },
+      }
     }
   }
 }
