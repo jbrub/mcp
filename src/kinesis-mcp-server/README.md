@@ -104,4 +104,4 @@ or after a successful `docker build -t awslabs/kinesis-mcp-server .`:
 
 Run the installation script:
 ```bash
-curl -sSL https://github.com/jbrub/mcp/blob/main/src/kinesis-mcp-server/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/jbrub/mcp/main/src/kinesis-mcp-server/install.sh | bash
