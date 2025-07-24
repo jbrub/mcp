@@ -232,8 +232,7 @@ async def create_stream(
     params['StreamModeDetails'] = stream_mode_details
 
     # Add ShardCount only for PROVISIONED mode
-    stream_mode = stream_mode_details.get('StreamMode', STREAM_MODE_ON_DEMAND)
-    if stream_mode == STREAM_MODE_PROVISIONED:
+    if stream_mode_details == STREAM_MODE_PROVISIONED:
         params['ShardCount'] = DEFAULT_SHARD_COUNT if shard_count is None else shard_count
 
     # Add tags if provided
