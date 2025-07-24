@@ -59,7 +59,6 @@ from awslabs.kinesis_mcp_server.consts import (
     DEFAULT_MAX_RESULTS,
     # Defaults
     DEFAULT_REGION,
-    DEFAULT_SHARD_COUNT,
     DEFAULT_STREAM_LIMIT,
     MAX_RESULTS_PER_STREAM,
     # Shared constants
@@ -208,8 +207,8 @@ async def create_stream(
         ...,
         description='stream_name: A name to identify the stream, must follow Kinesis naming conventions',
     ),
-    shard_count: Optional[int] = Field(
-        default=None,
+    shard_count: int = Field(
+        default=1,
         description='shard_count: Number of shards to create (default: 1), only used if stream_mode_details is set to PROVISIONED',
     ),
     stream_mode_details: Dict[str, str] = Field(
@@ -232,8 +231,9 @@ async def create_stream(
     params['StreamModeDetails'] = stream_mode_details
 
     # Add ShardCount only for PROVISIONED mode
-    if stream_mode_details == STREAM_MODE_PROVISIONED:
-        params['ShardCount'] = DEFAULT_SHARD_COUNT if shard_count is None else shard_count
+    stream_mode = stream_mode_details.get('StreamMode', STREAM_MODE_ON_DEMAND)
+    if stream_mode == STREAM_MODE_PROVISIONED:
+        params['ShardCount'] = int(shard_count)
 
     # Add tags if provided
     if tags:
