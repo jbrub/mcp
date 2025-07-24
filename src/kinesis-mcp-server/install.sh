@@ -81,7 +81,7 @@ EOF
 
 echo "AWS Kinesis MCP Server installed successfully!"
 echo ""
-echo "📋 Configuration:"
+echo "Configuration:"
 echo "   - OS: $OS"
 echo "   - Config file: $MCP_CONFIG_FILE"
 echo "   - Mode: Read-only (safe mode)"
