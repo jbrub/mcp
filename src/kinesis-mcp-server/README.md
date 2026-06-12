@@ -1,3 +1,4 @@
+# BEING DEPRECATED
 # AWS Labs Kinesis MCP Server
 
 The official MCP Server for interacting with AWS Kinesis
