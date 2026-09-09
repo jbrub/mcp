@@ -1,4 +1,13 @@
-# BEING DEPRECATED
+> # ⚠️ DEPRECATED
+>
+> **This package (`awslabs.kinesis-mcp-server`) is deprecated and no longer maintained.**
+>
+> Please use the official, actively maintained AWS MCP Servers instead:
+> **https://github.com/awslabs/mcp**
+>
+> This repository will be archived and its published packages yanked once
+> adequate migration time has passed. No further updates or fixes will be made here.
+
 # AWS Labs Kinesis MCP Server
 
 The official MCP Server for interacting with AWS Kinesis

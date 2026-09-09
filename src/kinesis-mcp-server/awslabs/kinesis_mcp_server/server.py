@@ -17,6 +17,7 @@
 # All imports consolidated at the top
 import boto3
 import os
+import warnings
 from awslabs.kinesis_mcp_server.common import (
     AddTagsToStreamInput,
     CreateStreamInput,
@@ -70,6 +71,11 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from typing import Any, Dict, List, Optional, Union
+
+
+# Deprecation notice
+msg = 'awslabs.kinesis-mcp-server is deprecated. Please use the official AWS MCP Servers at https://github.com/awslabs/mcp instead'
+warnings.warn(msg, DeprecationWarning, stacklevel=1)
 
 
 # MCP Server Set Up
@@ -1552,6 +1558,8 @@ async def register_stream_consumer(
 
 def main():
     """Run the MCP server."""
+    msg = 'awslabs.kinesis-mcp-server is deprecated. Please use the official AWS MCP Servers at https://github.com/awslabs/mcp instead'
+    warnings.warn(msg, DeprecationWarning, stacklevel=1)
     mcp.run()
 
 
